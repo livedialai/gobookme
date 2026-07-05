@@ -278,7 +278,7 @@
       state.phone = document.getElementById('dinia-phone').value.trim();
       state.notes = document.getElementById('dinia-notes').value.trim();
       if (!state.name) { alert('Bitte geben Sie Ihren Namen ein.'); return false; }
-      if (state.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email)) { alert('Bitte geben Sie eine gültige E-Mail ein oder lassen Sie das Feld leer.'); return false; }
+      if (!state.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email)) { alert('Bitte geben Sie eine gültige E-Mail ein.'); return false; }
       if (!state.phone) { alert('Bitte geben Sie Ihre Telefonnummer ein.'); return false; }
       return true;
     }
