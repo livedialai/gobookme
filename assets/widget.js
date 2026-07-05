@@ -164,11 +164,6 @@
             '<div class="dinia-success-icon">✓</div>' +
             '<h3 style="text-align:center;color:#4caf50;">Reservierung bestätigt!</h3>' +
             '<p style="text-align:center;" id="dinia-success-message"></p>' +
-            '<div id="dinia-cancel-info" style="display:none;text-align:center;margin-top:12px;padding:12px;background:#f9f9f9;border-radius:8px;font-size:14px;color:#666;" class="dinia-cancel-box">' +
-              '<strong>Stornierung:</strong><br>' +
-              '<span id="dinia-cancel-phone"></span>' +
-              '<span id="dinia-cancel-email"></span>' +
-            '</div>' +
             '<p style="text-align:center;color:#999;font-size:14px;">Eine Bestätigungs-E-Mail wurde gesendet.</p>' +
             '<div class="dinia-nav dinia-nav-center"><button type="button" class="dinia-btn dinia-btn-next" onclick="location.reload()">Neue Reservierung</button></div>' +
           '</div>' +
@@ -409,15 +404,6 @@
         document.querySelectorAll('.dinia-panel').forEach(function (p) { p.classList.remove('active'); });
         document.getElementById('dinia-step-success').classList.add('active');
         document.getElementById('dinia-success-message').textContent = res.message || 'Reservierung #' + res.reservation_id;
-        // Cancel contact
-        var cancelDiv = document.getElementById('dinia-cancel-info');
-        var phoneSpan = document.getElementById('dinia-cancel-phone');
-        var emailSpan = document.getElementById('dinia-cancel-email');
-        if (res.cancel_phone || res.cancel_email) {
-          if (res.cancel_phone) phoneSpan.innerHTML = 'Telefon: <strong>' + res.cancel_phone + '</strong><br>';
-          if (res.cancel_email) emailSpan.innerHTML = 'E-Mail: <strong>' + res.cancel_email + '</strong>';
-          cancelDiv.style.display = 'block';
-        }
         document.querySelectorAll('.dinia-step').forEach(function (s) { s.classList.add('done'); s.classList.remove('active'); });
       } else {
         errorDiv.textContent = res.error || 'Fehler bei der Buchung.';

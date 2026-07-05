@@ -902,6 +902,59 @@ class DINA_Admin {
 			}
 		}
 
+		// ─── VERTRAG KÜNDIGEN (Cancel Contract) ───
+		if ( isset( $_POST['action'] ) && 'dinia_cancel_contract' === $_POST['action']
+			&& wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_cancel_contract_nonce' ) ) {
+			$customer_id = isset( $_POST['customer_id'] ) ? (int) $_POST['customer_id'] : 0;
+			if ( $customer_id > 0 ) {
+				$customer = $this->customers->get_by_id( $customer_id );
+				if ( $customer && ! empty( $customer->mollie_customer_id ) ) {
+					// 1) Mollie-Subscriptions holen & kündigen
+					$mollie        = new DINA_Mollie();
+					$subs_result   = $mollie->get_subscriptions( $customer->mollie_customer_id );
+					$cancelled_ids = array();
+					if ( $subs_result['success'] && ! empty( $subs_result['subscriptions'] ) ) {
+						foreach ( $subs_result['subscriptions'] as $sub ) {
+							if ( in_array( $sub['status'], array( 'active', 'pending' ), true ) ) {
+								$cancel_result = $mollie->cancel_subscription( $customer->mollie_customer_id, $sub['id'] );
+								if ( $cancel_result['success'] ) {
+									$cancelled_ids[] = $sub['id'];
+								}
+							}
+						}
+					}
+
+					// 2) Lokales Abonnement kündigen
+					$subscriptions = new DINA_Subscriptions();
+					$subscriptions->cancel( $customer_id );
+
+					// 3) Customer-Status auf cancelled setzen
+					$this->wpdb->update(
+						$this->prefix . 'dinia_customers',
+						array( 'status' => 'cancelled' ),
+						array( 'id' => $customer_id )
+					);
+
+					// 4) Email an Kunden senden
+					if ( ! empty( $customer->email ) ) {
+						$date_formatted = date_i18n( 'l, j. F Y H:i' );
+						$subject        = sprintf( __( 'Vertrag gekündigt – %s', 'dinia' ), $customer->company );
+						$html  = '<h2>🔴 Vertrag gekündigt</h2>';
+						$html .= '<p>Hallo <strong>' . esc_html( $customer->company ) . '</strong>,</p>';
+						$html .= '<p>Ihr Vertrag wurde zum <strong>' . esc_html( $date_formatted ) . '</strong> gekündigt.</p>';
+						if ( ! empty( $cancelled_ids ) ) {
+							$html .= '<p>Das Mollie-Abo wurde gestoppt. Es werden keine weiteren Zahlungen eingezogen.</p>';
+						}
+						$html .= '<p>Bei Fragen kontaktieren Sie uns bitte.</p>';
+						$html_body = DINA_Mailer::build_html( $subject, $html, $customer->company );
+						DINA_Mailer::send( $customer->email, $subject, 'Ihr Vertrag wurde gekündigt', $html_body );
+					}
+				}
+			}
+			wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-customers', 'action' => 'edit', 'id' => $customer_id, 'contract_cancelled' => '1' ), admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
 		// ─── RESTAURANT: Öffnungszeiten speichern ───
 		if ( isset( $_POST['dinia_save_hours'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_rest_hours_nonce' ) ) {
 			$customer_id = isset( $_POST['rest_customer_id'] ) ? (int) $_POST['rest_customer_id'] : 0;
@@ -940,8 +993,7 @@ class DINA_Admin {
 			if ( $customer_id > 0 ) {
 				$settings = array(
 					'restaurant_name'    => sanitize_text_field( $_POST['restaurant_name'] ?? '' ),
-					'cancel_phone'       => sanitize_text_field( $_POST['cancel_phone'] ?? '' ),
-					'cancel_email'       => sanitize_email( $_POST['cancel_email'] ?? '' ),
+
 					'slot_duration'      => min( 180, max( 30, (int) ( $_POST['slot_duration'] ?? 120 ) ) ),
 					'slot_interval'      => in_array( (int) ( $_POST['slot_interval'] ?? 30 ), array( 15, 30, 60 ) ) ? (int) $_POST['slot_interval'] : 30,
 					'min_advance_hours'  => min( 48, max( 1, (int) ( $_POST['min_advance_hours'] ?? 2 ) ) ),
@@ -1143,6 +1195,9 @@ class DINA_Admin {
 		if ( isset( $_GET['created'] ) ) {
 			echo '<div class="dinia-alert dinia-alert-success">Kunde wurde angelegt.</div>';
 		}
+		if ( isset( $_GET['contract_cancelled'] ) ) {
+			echo '<div class="dinia-alert dinia-alert-success">✅ Vertrag wurde gekündigt. Mollie-Abo gestoppt, Kunde per E-Mail benachrichtigt.</div>';
+		}
 		?>
 		<div class="wrap dinia-wrap">
 			<div class="dinia-flex dinia-mb-20">
@@ -1247,7 +1302,17 @@ class DINA_Admin {
 						<tr><td style="font-weight:600;">Kunden-ID</td><td><?php echo (int) $customer->id; ?></td></tr>
 						<tr><td style="font-weight:600;">Mollie Customer ID</td><td><code><?php echo esc_html( $customer->mollie_customer_id ?? '–' ); ?></code></td></tr>
 						<tr><td style="font-weight:600;">Erstellt am</td><td><?php echo esc_html( $customer->created_at ?? '–' ); ?></td></tr>
+						<tr><td style="font-weight:600;">Status</td><td><?php echo esc_html( $customer->status ?? '–' ); ?></td></tr>
 					</table>
+
+					<?php if ( ! empty( $customer->mollie_customer_id ) && in_array( $customer->status, array( 'active', 'suspended' ), true ) ) : ?>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=dinia-customers' ) ); ?>" style="margin-top:16px;" onsubmit="return confirm('<?php esc_attr_e( 'Vertrag wirklich kündigen? Der Kunde erhält eine Bestätigungs-E-Mail. Mollie-Abo wird gestoppt.', 'dinia' ); ?>');">
+							<?php wp_nonce_field( 'dinia_cancel_contract_nonce' ); ?>
+							<input type="hidden" name="action" value="dinia_cancel_contract">
+							<input type="hidden" name="customer_id" value="<?php echo (int) $customer->id; ?>">
+							<button type="submit" class="dinia-btn dinia-btn-danger">🔴 Vertrag kündigen & Mollie-Abo stoppen</button>
+						</form>
+					<?php endif; ?>
 				</div>
 			<?php endif; ?>
 		</div>
@@ -1979,20 +2044,6 @@ class DINA_Admin {
 							<label>Primärfarbe</label>
 							<input type="color" name="primary_color" value="<?php echo esc_attr( $settings['primary_color'] ?? '#ff6b00' ); ?>">
 							<code style="margin-left:8px;"><?php echo esc_html( $settings['primary_color'] ?? '#ff6b00' ); ?></code>
-						</div>
-					</div>
-
-					<h2>Stornierungs-Kontakt</h2>
-					<div class="dinia-rest-form">
-						<div class="form-row">
-							<label>Stornierungs-Telefon</label>
-							<input type="tel" name="cancel_phone" value="<?php echo esc_attr( $settings['cancel_phone'] ?? '' ); ?>" class="regular-text" placeholder="z.B. +49 471 12345678">
-							<span style="color:#666;font-size:12px;">Wird auf der Erfolgsseite und in der Bestätigungsmail angezeigt.</span>
-						</div>
-						<div class="form-row">
-							<label>Stornierungs-E-Mail</label>
-							<input type="email" name="cancel_email" value="<?php echo esc_attr( $settings['cancel_email'] ?? '' ); ?>" class="regular-text" placeholder="z.B. stornierung@restaurant.de">
-							<span style="color:#666;font-size:12px;">Optional – falls Gäste per Mail stornieren können sollen.</span>
 						</div>
 					</div>
 

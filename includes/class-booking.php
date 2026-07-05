@@ -712,8 +712,7 @@ class DINA_Booking {
 			'max_advance_days'   => 30,
 			'min_advance_hours'  => 2,
 			'restaurant_name'    => '',
-			'cancel_phone'       => '',
-			'cancel_email'       => '',
+
 			'email_reminder'     => 0,
 			'reminder_hours'     => 24,
 			'email_confirm'      => 1,

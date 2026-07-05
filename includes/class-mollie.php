@@ -44,6 +44,111 @@ class DINA_Mollie {
 	}
 
 	/**
+	 * Kündigt eine bestehende Mollie-Subscription.
+	 *
+	 * @since 1.1.7
+	 *
+	 * @param string $mollie_customer_id Die Mollie-Kunden-ID.
+	 * @param string $subscription_id    Die Mollie-Subscription-ID.
+	 *
+	 * @return array{success: bool, error?: string}
+	 */
+	public function cancel_subscription( string $mollie_customer_id, string $subscription_id ): array {
+		$api_key = $this->get_api_key();
+		if ( empty( $api_key ) ) {
+			return array(
+				'success' => false,
+				'error'   => 'Mollie API-Key ist nicht konfiguriert.',
+			);
+		}
+
+		$response = wp_remote_request(
+			$this->api_base . 'customers/' . rawurlencode( $mollie_customer_id ) . '/subscriptions/' . rawurlencode( $subscription_id ),
+			array(
+				'method'  => 'DELETE',
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $api_key,
+					'Content-Type'  => 'application/json',
+				),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return array(
+				'success' => false,
+				'error'   => $response->get_error_message(),
+			);
+		}
+
+		$code = wp_remote_retrieve_response_code( $response );
+
+		if ( $code < 200 || $code >= 300 ) {
+			$raw  = wp_remote_retrieve_body( $response );
+			$data = json_decode( $raw, true );
+			return array(
+				'success' => false,
+				'error'   => $data['title'] ?? "HTTP $code",
+			);
+		}
+
+		return array( 'success' => true );
+	}
+
+	/**
+	 * Holt alle aktiven Subscriptions eines Mollie-Kunden.
+	 *
+	 * @since 1.1.7
+	 *
+	 * @param string $mollie_customer_id Die Mollie-Kunden-ID.
+	 *
+	 * @return array{success: bool, subscriptions?: array, error?: string}
+	 */
+	public function get_subscriptions( string $mollie_customer_id ): array {
+		$api_key = $this->get_api_key();
+		if ( empty( $api_key ) ) {
+			return array(
+				'success' => false,
+				'error'   => 'Mollie API-Key ist nicht konfiguriert.',
+			);
+		}
+
+		$response = wp_remote_get(
+			$this->api_base . 'customers/' . rawurlencode( $mollie_customer_id ) . '/subscriptions',
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $api_key,
+					'Content-Type'  => 'application/json',
+				),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return array(
+				'success' => false,
+				'error'   => $response->get_error_message(),
+			);
+		}
+
+		$code    = wp_remote_retrieve_response_code( $response );
+		$raw     = wp_remote_retrieve_body( $response );
+		$decoded = json_decode( $raw, true );
+
+		if ( $code < 200 || $code >= 300 ) {
+			return array(
+				'success' => false,
+				'error'   => $decoded['title'] ?? "HTTP $code",
+			);
+		}
+
+		return array(
+			'success'       => true,
+			'subscriptions' => $decoded['_embedded']['subscriptions'] ?? array(),
+		);
+	}
+
+	/**
 	 * Erstellt einen neuen Kunden bei Mollie.
 	 *
 	 * @since 1.0.0
@@ -213,15 +318,15 @@ class DINA_Mollie {
 
 		$body = wp_json_encode(
 			array(
-				'amount'      => array(
+				'amount'       => array(
 					'currency' => 'EUR',
 					'value'    => number_format( $amount, 2, '.', '' ),
 				),
-				'description' => sanitize_text_field( $description ),
-				'customerId'  => $mollie_customer_id,
+				'description'  => sanitize_text_field( $description ),
+				'customerId'   => $mollie_customer_id,
 				'sequenceType' => 'first',
-				'webhookUrl'  => esc_url_raw( $webhook_url ),
-				'redirectUrl' => esc_url_raw( $redirect_url ),
+				'webhookUrl'   => esc_url_raw( $webhook_url ),
+				'redirectUrl'  => esc_url_raw( $redirect_url ),
 			)
 		);
 
@@ -362,9 +467,57 @@ class DINA_Mollie {
 			);
 		}
 
+		// ── Email an Kunden bei erfolgreicher Zahlung ──
+		$this->send_payment_success_email( $mollie_customer_id, $amount_value, $payment_id );
+
 		return array(
 			'handled' => true,
 			'event'   => 'payment.paid',
+		);
+	}
+
+	/**
+	 * Sendet eine Bestätigungsmail bei erfolgreicher Zahlung.
+	 *
+	 * @since 1.1.7
+	 *
+	 * @param string $mollie_customer_id Mollie-Customer-ID.
+	 * @param float  $amount             Bezahlter Betrag.
+	 * @param string $payment_id         Mollie-Payment-ID.
+	 *
+	 * @return bool
+	 */
+	private function send_payment_success_email( string $mollie_customer_id, float $amount, string $payment_id ): bool {
+		global $wpdb;
+
+		$customer = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT company, email FROM {$wpdb->prefix}dinia_customers WHERE mollie_customer_id = %s LIMIT 1",
+				$mollie_customer_id
+			)
+		);
+
+		if ( ! $customer || empty( $customer->email ) ) {
+			return false;
+		}
+
+		$date_formatted = date_i18n( 'l, j. F Y H:i' );
+		$subject        = sprintf( __( 'Zahlung bestätigt – %s', 'dinia' ), $customer->company );
+
+		$html  = '<h2>✅ Zahlung erfolgreich</h2>';
+		$html .= '<p>Hallo <strong>' . esc_html( $customer->company ) . '</strong>,</p>';
+		$html .= '<p>Ihre Zahlung in Höhe von <strong>' . number_format( $amount, 2, ',', '.' ) . ' €</strong> wurde erfolgreich abgeschlossen.</p>';
+		$html .= '<p><strong>Datum:</strong> ' . esc_html( $date_formatted ) . '<br>';
+		$html .= '<strong>Transaktions-ID:</strong> ' . esc_html( $payment_id ) . '</p>';
+		$html .= '<p>Ihr Abonnement ist aktiv und läuft automatisch weiter.</p>';
+
+		$html_body = DINA_Mailer::build_html( $subject, $html, $customer->company );
+
+		return DINA_Mailer::send(
+			$customer->email,
+			$subject,
+			"Zahlung bestätigt: {$amount} €",
+			$html_body
 		);
 	}
 
@@ -413,9 +566,55 @@ class DINA_Mollie {
 			);
 		}
 
+		// ── Email an Kunden bei Kündigung ──
+		$this->send_cancellation_email( $mollie_customer_id, $subscription_id );
+
 		return array(
 			'handled' => true,
 			'event'   => 'subscription.cancelled',
+		);
+	}
+
+	/**
+	 * Sendet eine Kündigungsbestätigungsmail an den Kunden.
+	 *
+	 * @since 1.1.7
+	 *
+	 * @param string $mollie_customer_id Mollie-Customer-ID.
+	 * @param string $subscription_id    Mollie-Subscription-ID.
+	 *
+	 * @return bool
+	 */
+	private function send_cancellation_email( string $mollie_customer_id, string $subscription_id ): bool {
+		global $wpdb;
+
+		$customer = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT company, email FROM {$wpdb->prefix}dinia_customers WHERE mollie_customer_id = %s LIMIT 1",
+				$mollie_customer_id
+			)
+		);
+
+		if ( ! $customer || empty( $customer->email ) ) {
+			return false;
+		}
+
+		$date_formatted = date_i18n( 'l, j. F Y H:i' );
+		$subject        = sprintf( __( 'Vertrag gekündigt – %s', 'dinia' ), $customer->company );
+
+		$html  = '<h2>🔴 Vertrag gekündigt</h2>';
+		$html .= '<p>Hallo <strong>' . esc_html( $customer->company ) . '</strong>,</p>';
+		$html .= '<p>Ihr Abonnement wurde zum <strong>' . esc_html( $date_formatted ) . '</strong> gekündigt.</p>';
+		$html .= '<p>Es werden keine weiteren Zahlungen von Mollie eingezogen.</p>';
+		$html .= '<p>Sie können uns jederzeit kontaktieren, um den Vertrag wieder zu aktivieren.</p>';
+
+		$html_body = DINA_Mailer::build_html( $subject, $html, $customer->company );
+
+		return DINA_Mailer::send(
+			$customer->email,
+			$subject,
+			"Ihr Vertrag wurde gekündigt",
+			$html_body
 		);
 	}
 
