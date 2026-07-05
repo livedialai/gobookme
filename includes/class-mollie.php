@@ -392,35 +392,71 @@ class DINA_Mollie {
 	 *
 	 * @return array{handled: bool, event?: string, error?: string} Ergebnis-Array.
 	 */
-	public function handle_webhook( array $webhook_data ): array {
-		// ---- 1) Identifiziere das Event / den Ressourcentyp aus den Daten ----
-		$resource    = $webhook_data['resource'] ?? '';
-		$event_id    = $webhook_data['id'] ?? '';
-		$mollie_customer_id = $webhook_data['customerId'] ?? '';
+	/**
+	 * Ruft Payment-Details von der Mollie-API ab.
+	 *
+	 * @since 1.1.8
+	 * @param string $payment_id Mollie-Payment-ID.
+	 * @return array|null Payment-Daten oder null bei Fehler.
+	 */
+	public function get_payment( string $payment_id ): ?array {
+		$api_key = $this->get_api_key();
+		if ( empty( $api_key ) ) {
+			return null;
+		}
+		$response = wp_remote_get(
+			$this->api_base . 'payments/' . rawurlencode( $payment_id ),
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $api_key,
+				),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return null;
+		}
+		$code    = wp_remote_retrieve_response_code( $response );
+		$decoded = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( $code < 200 || $code >= 300 || empty( $decoded ) ) {
+			return null;
+		}
+		return $decoded;
+	}
 
-		if ( empty( $resource ) || empty( $event_id ) ) {
+	public function handle_webhook( array $webhook_data ): array {
+		// ---- 1) Mollie sendet nur id=tr_xxx (kein resource/status/customerId) ----
+		$payment_id = $webhook_data['id'] ?? '';
+		if ( empty( $payment_id ) ) {
 			return array(
 				'handled' => false,
-				'error'   => 'Ungültige Webhook-Daten: resource oder id fehlt.',
+				'error'   => 'Keine Payment-ID im Webhook.',
 			);
 		}
 
-		// ---- 2) Lade Details über die Mollie-API nach, falls nötig ----
-		//       (Webhook-Payloads enthalten nicht immer alle Felder.)
+		// ---- 2) Payment-Details von Mollie-API holen ----
+		$payment = $this->get_payment( $payment_id );
+		if ( null === $payment ) {
+			return array(
+				'handled' => false,
+				'error'   => "Payment {$payment_id} konnte nicht von Mollie-API geladen werden.",
+			);
+		}
+
+		$resource = $payment['resource'] ?? '';
+		$mollie_customer_id = $payment['customerId'] ?? '';
 
 		// ---- 3) Event-Dispatching ----
 		switch ( $resource ) {
 			case 'payment':
-				return $this->handle_payment_event( $webhook_data, $event_id, $mollie_customer_id );
-
-			case 'subscription':
-				return $this->handle_subscription_event( $webhook_data, $event_id, $mollie_customer_id );
+				return $this->handle_payment_event( $payment, $payment_id, $mollie_customer_id );
 
 			default:
+				// Kein payment-event – nichts zu tun
 				return array(
-					'handled' => false,
+					'handled' => true,
 					'event'   => $resource,
-					'error'   => "Nicht unterstützter Ressourcentyp: {$resource}",
+					'note'    => "Nicht verarbeitet: {$resource}",
 				);
 		}
 	}
@@ -447,6 +483,8 @@ class DINA_Mollie {
 			);
 		}
 
+		global $wpdb;
+
 		// Betrag aus dem verschachtelten 'amount'-Objekt extrahieren.
 		$amount_value = 0.00;
 		if ( isset( $webhook_data['amount']['value'] ) ) {
@@ -465,6 +503,43 @@ class DINA_Mollie {
 				'event'   => 'payment.paid',
 				'error'   => "Rechnung mit Mollie-Payment-ID {$payment_id} konnte nicht als bezahlt markiert werden (nicht gefunden oder Update fehlgeschlagen).",
 			);
+		}
+
+		// Kunde auf 'active' setzen
+		$customer = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT id, company, email, plan_id FROM {$wpdb->prefix}dinia_customers WHERE mollie_customer_id = %s LIMIT 1",
+				$mollie_customer_id
+			)
+		);
+
+		if ( $customer ) {
+			$wpdb->update(
+				$wpdb->prefix . 'dinia_customers',
+				array( 'status' => 'active' ),
+				array( 'id' => (int) $customer->id )
+			);
+
+			// Subscription bei Mollie anlegen (monatlich)
+			if ( ! empty( $customer->plan_id ) ) {
+				$plan = ( new DINA_Plans() )->get_by_id( (int) $customer->plan_id );
+				$monthly_price = ( $plan && isset( $plan->price_monthly ) ) ? (float) $plan->price_monthly : 19.95;
+
+				$subscription = $this->create_subscription(
+					$mollie_customer_id,
+					$monthly_price,
+					sprintf( '%s – %s', $plan ? $plan->name : 'Dinia Basic', $customer->company ),
+					rest_url( 'dinia/v1/webhook/mollie' )
+				);
+
+				if ( $subscription['success'] && isset( $subscription['subscription_id'] ) ) {
+					$wpdb->update(
+						$wpdb->prefix . 'dinia_customers',
+						array( 'subscription_id' => $subscription['subscription_id'] ),
+						array( 'id' => (int) $customer->id )
+					);
+				}
+			}
 		}
 
 		// ── Email an Kunden bei erfolgreicher Zahlung ──
