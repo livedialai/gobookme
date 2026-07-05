@@ -16,7 +16,7 @@
     notes: ''
   };
 
-  var tenant, apiBase;
+  var tenant, apiBase, clientMode, apiKey;
 
   // Nächsten 7 Tage als Datums-Buttons anzeigen
   var today = new Date();
@@ -30,6 +30,15 @@
 
   function formatDateLong(d) {
     return d.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  function fetchWithKey(url, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    if (apiKey) {
+      options.headers['X-API-Key'] = apiKey;
+    }
+    return fetch(url, options);
   }
 
   function init() {
@@ -50,6 +59,20 @@
     }
 
     apiBase = (typeof DINIA_API_BASE !== 'undefined') ? DINIA_API_BASE : '/wp-json/dinia/v1/widget/' + encodeURIComponent(tenant);
+    apiKey = (typeof DINIA_API_KEY !== 'undefined') ? DINIA_API_KEY : null;
+    clientMode = (typeof DINIA_CLIENT_MODE !== 'undefined') ? DINIA_CLIENT_MODE : false;
+
+    // In client mode, use /client/ endpoints without slug in URL
+    if (clientMode && !apiKey) {
+      console.error('[Dinia] DINIA_CLIENT_MODE erfordert DINIA_API_KEY.');
+      return;
+    }
+    if (clientMode) {
+      // apiBase must point to /wp-json/dinia/v1/client (no trailing slash)
+      if (apiBase === '/wp-json/dinia/v1/widget/' + encodeURIComponent(tenant)) {
+        apiBase = '/wp-json/dinia/v1/client';
+      }
+    }
 
     var container = document.getElementById('dinia-widget');
     if (!container) {
@@ -63,7 +86,7 @@
     goToStep(1);
 
     // Restaurant-Name aus Config laden
-    fetch(apiBase + '/config')
+    fetchWithKey(apiBase + '/config')
       .then(function (r) { return r.json(); })
       .then(function (cfg) {
         var name = (cfg.settings && cfg.settings.restaurant_name) || cfg.restaurant_name || 'Restaurant';
@@ -273,7 +296,7 @@
     error.style.display = 'none';
     loading.style.display = 'block';
 
-    fetch(apiBase + '/slots?date=' + encodeURIComponent(state.date) + '&party_size=' + state.party_size)
+    fetchWithKey(apiBase + '/slots?date=' + encodeURIComponent(state.date) + '&party_size=' + state.party_size)
       .then(function (r) {
         if (!r.ok) throw new Error('Status ' + r.status);
         return r.json();
@@ -357,7 +380,7 @@
     btn.textContent = 'Wird gespeichert …';
     errorDiv.style.display = 'none';
 
-    fetch(apiBase + '/reserve', {
+    fetchWithKey(apiBase + '/reserve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
