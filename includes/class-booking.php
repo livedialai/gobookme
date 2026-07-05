@@ -405,7 +405,13 @@ class DINA_Booking {
 			);
 		}
 
-		return (int) $wpdb->insert_id;
+		$res_id = (int) $wpdb->insert_id;
+
+		self::schedule_reminder( $res_id, $data['date'], $data['time_start'] );
+		self::send_confirmation_email( $res_id );
+		self::send_admin_notification( $res_id );
+
+		return $res_id;
 	}
 
 	/**
@@ -701,10 +707,225 @@ class DINA_Booking {
 	 */
 	public static function get_default_settings() {
 		return array(
-			'slot_duration'    => 120,
-			'slot_interval'    => 30,
-			'max_advance_days' => 30,
-			'restaurant_name'  => '',
+			'slot_duration'      => 120,
+			'slot_interval'      => 30,
+			'max_advance_days'   => 30,
+			'min_advance_hours'  => 2,
+			'restaurant_name'    => '',
+			'email_reminder'     => 0,
+			'reminder_hours'     => 24,
+			'email_confirm'      => 1,
+			'admin_notify_email' => '',
 		);
+	}
+
+	/**
+	 * Ruft eine Reservierung mit zugehörigem Tisch-Namen ab.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $res_id      Reservierungs-ID.
+	 * @param int $customer_id Customer-ID (0 = automatisch).
+	 * @return object|null Reservierungs-Objekt mit table_name oder null.
+	 */
+	public static function get_reservation_data( $res_id, $customer_id = 0 ) {
+		global $wpdb;
+
+		$customer_id = self::resolve_customer_id( $customer_id );
+		if ( ! $customer_id ) {
+			return null;
+		}
+
+		$table = $wpdb->prefix . 'dinia_reservations';
+
+		return $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT r.*, t.name AS table_name
+				 FROM {$table} r
+				 LEFT JOIN {$wpdb->prefix}dinia_tables t ON r.table_id = t.id
+				 WHERE r.id = %d
+				 LIMIT 1",
+				(int) $res_id
+			)
+		);
+	}
+
+	/**
+	 * Plant eine Erinnerungs-E-Mail per WP Cron, 24h vor Reservierungsbeginn.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int    $res_id    Reservierungs-ID.
+	 * @param string $date_str  Datum (Y-m-d).
+	 * @param string $time_start Startzeit (H:i).
+	 * @return void
+	 */
+	public static function schedule_reminder( $res_id, $date_str, $time_start ) {
+		$settings = self::get_settings();
+
+		if ( empty( $settings['email_reminder'] ) ) {
+			return;
+		}
+
+		$hours_before = (int) ( $settings['reminder_hours'] ?? 24 );
+		$timestamp    = strtotime( $date_str . ' ' . $time_start ) - ( $hours_before * 3600 );
+
+		if ( $timestamp > time() ) {
+			wp_schedule_single_event( $timestamp, 'dinia_reminder_event', array( $res_id ) );
+		}
+	}
+
+	/**
+	 * Sendet eine HTML-Erinnerungs-E-Mail an den Gast.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $res_id Reservierungs-ID.
+	 * @return void
+	 */
+	public static function send_reminder_email( $res_id ) {
+		$r = self::get_reservation_data( $res_id );
+		if ( ! $r ) {
+			return;
+		}
+
+		$settings   = self::get_settings();
+		$restaurant = ! empty( $settings['restaurant_name'] ) ? $settings['restaurant_name'] : 'Restaurant';
+		$date_fmt   = date_i18n( 'd.m.Y', strtotime( $r->date ) );
+		$subject    = 'Erinnerung: Ihre Reservierung morgen – ' . $restaurant;
+
+		$plain  = "Hallo {$r->guest_name},\n\n";
+		$plain .= "nur zur Erinnerung – Sie haben morgen eine Reservierung:\n\n";
+		$plain .= "Restaurant: {$restaurant}\n";
+		$plain .= "Datum: {$date_fmt}\n";
+		$plain .= "Uhrzeit: {$r->time_start} – {$r->time_end}\n";
+		$plain .= "Tisch: {$r->table_name}\n";
+		$plain .= "Personen: {$r->guest_count}\n";
+		$plain .= "\nWir freuen uns auf Ihren Besuch!\n";
+
+		$html_content = '
+<h2>🔔 Reservierungs-Erinnerung</h2>
+<p>Hallo <strong>' . esc_html( $r->guest_name ) . '</strong>,</p>
+<p>nur zur Erinnerung – Sie haben morgen eine Reservierung bei uns:</p>
+<div class="details">
+<p><strong>Restaurant:</strong> ' . esc_html( $restaurant ) . '</p>
+<p><strong>Datum:</strong> ' . esc_html( $date_fmt ) . '</p>
+<p><strong>Uhrzeit:</strong> ' . esc_html( $r->time_start ) . ' – ' . esc_html( $r->time_end ) . '</p>
+<p><strong>Tisch:</strong> ' . esc_html( $r->table_name ) . '</p>
+<p><strong>Personen:</strong> ' . (int) $r->guest_count . '</p>
+</div>
+<p>Wir freuen uns auf Ihren Besuch!</p>';
+
+		$html = DINA_Mailer::build_html( $subject, $html_content, $restaurant );
+
+		$sent = DINA_Mailer::send( $r->guest_email, $subject, $plain, $html, $settings );
+		if ( $sent !== true ) {
+			wp_mail( $r->guest_email, $subject, $plain );
+		}
+	}
+
+	/**
+	 * Sendet eine HTML-Bestätigungs-E-Mail an den Gast.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $res_id Reservierungs-ID.
+	 * @return void
+	 */
+	public static function send_confirmation_email( $res_id ) {
+		$settings = self::get_settings();
+
+		if ( empty( $settings['email_confirm'] ) ) {
+			return;
+		}
+
+		$r = self::get_reservation_data( $res_id );
+		if ( ! $r ) {
+			return;
+		}
+
+		$restaurant = ! empty( $settings['restaurant_name'] ) ? $settings['restaurant_name'] : 'Restaurant';
+		$date_fmt   = date_i18n( 'd.m.Y', strtotime( $r->date ) );
+		$subject    = 'Reservierungsbestätigung – ' . $restaurant;
+
+		$plain  = "Hallo {$r->guest_name},\n\nIhre Reservierung wurde bestätigt:\n\n";
+		$plain .= "Restaurant: {$restaurant}\nDatum: {$date_fmt}\n";
+		$plain .= "Uhrzeit: {$r->time_start} – {$r->time_end}\n";
+		$plain .= "Tisch: {$r->table_name}\nPersonen: {$r->guest_count}\n";
+		if ( $r->notes ) {
+			$plain .= "Bemerkung: {$r->notes}\n";
+		}
+		$plain .= "\nWir freuen uns auf Ihren Besuch!\n";
+
+		$html_content = '
+<h2>✅ Reservierung bestätigt</h2>
+<p>Hallo <strong>' . esc_html( $r->guest_name ) . '</strong>,</p>
+<p>Ihre Reservierung wurde erfolgreich bestätigt:</p>
+<div class="details">
+<p><strong>Restaurant:</strong> ' . esc_html( $restaurant ) . '</p>
+<p><strong>Datum:</strong> ' . esc_html( $date_fmt ) . '</p>
+<p><strong>Uhrzeit:</strong> ' . esc_html( $r->time_start ) . ' – ' . esc_html( $r->time_end ) . '</p>
+<p><strong>Tisch:</strong> ' . esc_html( $r->table_name ) . '</p>
+<p><strong>Personen:</strong> ' . (int) $r->guest_count . '</p>
+' . ( $r->notes ? '<p><strong>Bemerkung:</strong> ' . esc_html( $r->notes ) . '</p>' : '' ) . '
+</div>
+<p>Wir freuen uns auf Ihren Besuch!</p>';
+
+		$html = DINA_Mailer::build_html( $subject, $html_content, $restaurant );
+
+		$sent = DINA_Mailer::send( $r->guest_email, $subject, $plain, $html, $settings );
+		if ( $sent !== true ) {
+			wp_mail( $r->guest_email, $subject, $plain );
+		}
+	}
+
+	/**
+	 * Sendet eine HTML-Benachrichtigung an den Admin bei neuer Reservierung.
+	 *
+	 * @since 1.0.0
+	 *
+	 * @param int $res_id Reservierungs-ID.
+	 * @return void
+	 */
+	public static function send_admin_notification( $res_id ) {
+		$r = self::get_reservation_data( $res_id );
+		if ( ! $r ) {
+			return;
+		}
+
+		$settings   = self::get_settings();
+		$restaurant = ! empty( $settings['restaurant_name'] ) ? $settings['restaurant_name'] : 'Restaurant';
+		$date_fmt   = date_i18n( 'd.m.Y', strtotime( $r->date ) );
+		$subject    = '[Neue Reservierung] ' . $r->guest_name . ' – ' . $date_fmt . ' ' . $r->time_start;
+
+		$plain  = "Neue Online-Reservierung:\n\n";
+		$plain .= "Name: {$r->guest_name}\nE-Mail: {$r->guest_email}\n";
+		$plain .= "Telefon: {$r->guest_phone}\nDatum: {$date_fmt}\n";
+		$plain .= "Uhrzeit: {$r->time_start} – {$r->time_end}\n";
+		$plain .= "Tisch: {$r->table_name}\nPersonen: {$r->guest_count}\n";
+		if ( $r->notes ) {
+			$plain .= "Bemerkung: {$r->notes}\n";
+		}
+
+		$html_content = '
+<h2>📞 Neue Reservierung</h2>
+<div class="details">
+<p><strong>Name:</strong> ' . esc_html( $r->guest_name ) . '</p>
+<p><strong>E-Mail:</strong> ' . esc_html( $r->guest_email ) . '</p>
+<p><strong>Telefon:</strong> ' . esc_html( $r->guest_phone ) . '</p>
+<p><strong>Datum:</strong> ' . esc_html( $date_fmt ) . '</p>
+<p><strong>Uhrzeit:</strong> ' . esc_html( $r->time_start ) . ' – ' . esc_html( $r->time_end ) . '</p>
+<p><strong>Tisch:</strong> ' . esc_html( $r->table_name ) . '</p>
+<p><strong>Personen:</strong> ' . (int) $r->guest_count . '</p>
+' . ( $r->notes ? '<p><strong>Bemerkung:</strong> ' . esc_html( $r->notes ) . '</p>' : '' ) . '
+</div>';
+
+		$html = DINA_Mailer::build_html( $subject, $html_content, $restaurant );
+
+		$admin_email = ! empty( $settings['admin_notify_email'] ) ? $settings['admin_notify_email'] : get_option( 'admin_email' );
+		$sent        = DINA_Mailer::send( $admin_email, $subject, $plain, $html, $settings );
+		if ( $sent !== true ) {
+			wp_mail( $admin_email, $subject, $plain );
+		}
 	}
 }

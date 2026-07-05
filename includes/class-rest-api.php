@@ -350,6 +350,51 @@ class DINA_REST_API {
 				),
 			)
 		);
+
+		// ─── ADMIN RESTAURANT-ROUTEN ──────────────────────────────
+
+		// GET /dinia/v1/admin/tables
+		register_rest_route( $this->namespace, '/admin/tables', array(
+			array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'admin_get_tables' ), 'permission_callback' => array( $this, 'check_admin' ) ),
+			array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'admin_create_table' ), 'permission_callback' => array( $this, 'check_admin' ) ),
+		) );
+		// PUT/DELETE /dinia/v1/admin/tables/{id}
+		register_rest_route( $this->namespace, '/admin/tables/(?P<id>\d+)', array(
+			array( 'methods' => WP_REST_Server::EDITABLE, 'callback' => array( $this, 'admin_update_table' ), 'permission_callback' => array( $this, 'check_admin' ), 'args' => array( 'id' => array( 'required' => true, 'validate_callback' => 'is_numeric' ) ) ),
+			array( 'methods' => WP_REST_Server::DELETABLE, 'callback' => array( $this, 'admin_delete_table' ), 'permission_callback' => array( $this, 'check_admin' ), 'args' => array( 'id' => array( 'required' => true, 'validate_callback' => 'is_numeric' ) ) ),
+		) );
+		// GET /dinia/v1/admin/reservations
+		register_rest_route( $this->namespace, '/admin/reservations', array(
+			'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'admin_get_reservations' ), 'permission_callback' => array( $this, 'check_admin' ),
+		) );
+		// PUT /dinia/v1/admin/reservations/{id}/status
+		register_rest_route( $this->namespace, '/admin/reservations/(?P<id>\d+)/status', array(
+			'methods' => WP_REST_Server::EDITABLE, 'callback' => array( $this, 'admin_update_reservation_status' ), 'permission_callback' => array( $this, 'check_admin' ), 'args' => array( 'id' => array( 'required' => true, 'validate_callback' => 'is_numeric' ) ),
+		) );
+		// POST /dinia/v1/admin/hours
+		register_rest_route( $this->namespace, '/admin/hours', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'admin_save_hours' ), 'permission_callback' => array( $this, 'check_admin' ),
+		) );
+		// POST /dinia/v1/admin/settings
+		register_rest_route( $this->namespace, '/admin/settings', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'admin_save_settings' ), 'permission_callback' => array( $this, 'check_admin' ),
+		) );
+		// POST /dinia/v1/admin/test-email
+		register_rest_route( $this->namespace, '/admin/test-email', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'admin_test_email' ), 'permission_callback' => array( $this, 'check_admin' ),
+		) );
+		// POST /dinia/v1/admin/test-caldav
+		register_rest_route( $this->namespace, '/admin/test-caldav', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'admin_test_caldav' ), 'permission_callback' => array( $this, 'check_admin' ),
+		) );
+		// POST /dinia/v1/admin/create-booking
+		register_rest_route( $this->namespace, '/admin/create-booking', array(
+			'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'admin_create_booking' ), 'permission_callback' => array( $this, 'check_admin' ),
+		) );
+		// GET /dinia/v1/admin/customer-settings/{id}
+		register_rest_route( $this->namespace, '/admin/customer-settings/(?P<id>\d+)', array(
+			'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'admin_get_customer_settings' ), 'permission_callback' => array( $this, 'check_admin' ), 'args' => array( 'id' => array( 'required' => true, 'validate_callback' => 'is_numeric' ) ),
+		) );
 	}
 
 	/**
@@ -1057,7 +1102,20 @@ class DINA_REST_API {
 					$customer_id = DINA_Tenant::instance()->get();
 					$tables = DINA_Booking::get_active_tables( $customer_id );
 
-					foreach ( $slots as $slot ) {
+					// Settings für min_advance_hours-Prüfung laden.
+				$settings = DINA_Booking::get_settings( $customer_id );
+				$min_advance_hours = (int) ( $settings['min_advance_hours'] ?? 2 );
+
+				foreach ( $slots as $slot ) {
+						// Bei heutigem Datum: Slots überspringen, die < jetzt + min_advance_hours sind.
+						if ( $date === current_time( 'Y-m-d' ) ) {
+							$slot_ts = strtotime( $date . ' ' . $slot['start'] );
+							$min_ts  = current_time( 'timestamp' ) + ( $min_advance_hours * 3600 );
+							if ( $slot_ts < $min_ts ) {
+								continue;
+							}
+						}
+
 						$reserved = DINA_Booking::get_reservations_for_slot( $date, $slot['start'], $slot['end'], $customer_id );
 						// Alle belegten Tisch-IDs sammeln (inkl. kombinierte table_ids)
 						$taken_ids = [];
@@ -1360,5 +1418,191 @@ class DINA_REST_API {
 	private function log_error( $message ) {
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 		error_log( 'DINA_REST_API: ' . $message );
+	}
+
+	// ─── ADMIN RESTAURANT CALLBACKS ──────────────────────────────
+
+	/** Tisch-Liste */
+	public function admin_get_tables() {
+		global $wpdb;
+		$cid = DINA_Tenant::instance()->get();
+		if ( ! $cid ) return new WP_Error( 'no_tenant', 'Kein Mandant.', array( 'status' => 400 ) );
+		$tables = $wpdb->get_results( $wpdb->prepare(
+			"SELECT * FROM {$wpdb->prefix}dinia_tables WHERE customer_id = %d ORDER BY seats ASC", $cid
+		) );
+		return rest_ensure_response( $tables );
+	}
+
+	/** Tisch anlegen */
+	public function admin_create_table( $request ) {
+		global $wpdb;
+		$cid = DINA_Tenant::instance()->get();
+		if ( ! $cid ) return new WP_Error( 'no_tenant', 'Kein Mandant.', array( 'status' => 400 ) );
+		$wpdb->insert( $wpdb->prefix . 'dinia_tables', array(
+			'customer_id' => $cid,
+			'name' => sanitize_text_field( $request->get_param( 'name' ) ?: 'Tisch' ),
+			'seats' => (int) ( $request->get_param( 'seats' ) ?: 2 ),
+			'position' => in_array( $request->get_param( 'position' ), array( 'indoor', 'outdoor', 'bar' ) ) ? $request->get_param( 'position' ) : 'indoor',
+			'active' => $request->get_param( 'active' ) ? 1 : 0,
+			'combinable' => $request->get_param( 'combinable' ) ? 1 : 0,
+		) );
+		return rest_ensure_response( array( 'success' => true, 'id' => $wpdb->insert_id ) );
+	}
+
+	/** Tisch aktualisieren */
+	public function admin_update_table( $request ) {
+		global $wpdb;
+		$id = (int) $request->get_param( 'id' );
+		$cid = DINA_Tenant::instance()->get();
+		if ( ! $cid ) return new WP_Error( 'no_tenant', 'Kein Mandant.', array( 'status' => 400 ) );
+		$wpdb->update( $wpdb->prefix . 'dinia_tables', array(
+			'name' => sanitize_text_field( $request->get_param( 'name' ) ?: 'Tisch' ),
+			'seats' => (int) ( $request->get_param( 'seats' ) ?: 2 ),
+			'position' => in_array( $request->get_param( 'position' ), array( 'indoor', 'outdoor', 'bar' ) ) ? $request->get_param( 'position' ) : 'indoor',
+			'active' => $request->get_param( 'active' ) ? 1 : 0,
+			'combinable' => $request->get_param( 'combinable' ) ? 1 : 0,
+		), array( 'id' => $id, 'customer_id' => $cid ) );
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/** Tisch löschen */
+	public function admin_delete_table( $request ) {
+		global $wpdb;
+		$id = (int) $request->get_param( 'id' );
+		$cid = DINA_Tenant::instance()->get();
+		if ( ! $cid ) return new WP_Error( 'no_tenant', 'Kein Mandant.', array( 'status' => 400 ) );
+		$wpdb->delete( $wpdb->prefix . 'dinia_tables', array( 'id' => $id, 'customer_id' => $cid ) );
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/** Reservierungs-Liste */
+	public function admin_get_reservations( $request ) {
+		global $wpdb;
+		$cid = DINA_Tenant::instance()->get();
+		if ( ! $cid ) return new WP_Error( 'no_tenant', 'Kein Mandant.', array( 'status' => 400 ) );
+		$date = $request->get_param( 'date' );
+		$status = $request->get_param( 'status' );
+		$sql = "SELECT r.*, t.name as table_name FROM {$wpdb->prefix}dinia_reservations r LEFT JOIN {$wpdb->prefix}dinia_tables t ON r.table_id = t.id WHERE r.customer_id = %d";
+		$args = array( $cid );
+		if ( $date ) { $sql .= " AND r.date = %s"; $args[] = $date; }
+		if ( $status ) { $sql .= " AND r.status = %s"; $args[] = $status; }
+		$sql .= " ORDER BY r.date DESC, r.time_start ASC";
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ) );
+		return rest_ensure_response( $rows );
+	}
+
+	/** Reservierungs-Status ändern */
+	public function admin_update_reservation_status( $request ) {
+		global $wpdb;
+		$id = (int) $request->get_param( 'id' );
+		$status = $request->get_param( 'status' );
+		if ( ! in_array( $status, array( 'confirmed', 'cancelled' ) ) ) {
+			return new WP_Error( 'invalid_status', 'Ungültiger Status.', array( 'status' => 400 ) );
+		}
+		$wpdb->update( $wpdb->prefix . 'dinia_reservations', array( 'status' => $status ), array( 'id' => $id ) );
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/** Öffnungszeiten speichern */
+	public function admin_save_hours( $request ) {
+		global $wpdb;
+		$cid = DINA_Tenant::instance()->get();
+		if ( ! $cid ) return new WP_Error( 'no_tenant', 'Kein Mandant.', array( 'status' => 400 ) );
+		$days = $request->get_param( 'days' );
+		if ( ! is_array( $days ) ) return new WP_Error( 'invalid', 'Tage-Array erwartet.', array( 'status' => 400 ) );
+		$valid_days = array( 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' );
+		foreach ( $days as $day_key => $data ) {
+			if ( ! in_array( $day_key, $valid_days ) ) continue;
+			$exists = $wpdb->get_var( $wpdb->prepare(
+				"SELECT id FROM {$wpdb->prefix}dinia_hours WHERE customer_id = %d AND day_key = %s", $cid, $day_key
+			) );
+			$values = array(
+				'open' => sanitize_text_field( $data['open'] ?? '' ),
+				'close' => sanitize_text_field( $data['close'] ?? '' ),
+				'open2' => sanitize_text_field( $data['open2'] ?? '' ),
+				'close2' => sanitize_text_field( $data['close2'] ?? '' ),
+				'closed' => ! empty( $data['closed'] ) ? 1 : 0,
+			);
+			if ( $exists ) {
+				$wpdb->update( $wpdb->prefix . 'dinia_hours', $values, array( 'id' => $exists ) );
+			} else {
+				$values['customer_id'] = $cid;
+				$values['day_key'] = $day_key;
+				$wpdb->insert( $wpdb->prefix . 'dinia_hours', $values );
+			}
+		}
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/** Kundeneinstellungen speichern */
+	public function admin_save_settings( $request ) {
+		global $wpdb;
+		$cid = DINA_Tenant::instance()->get();
+		if ( ! $cid ) return new WP_Error( 'no_tenant', 'Kein Mandant.', array( 'status' => 400 ) );
+		$settings = $request->get_param( 'settings' );
+		if ( ! is_array( $settings ) ) return new WP_Error( 'invalid', 'Settings-Array erwartet.', array( 'status' => 400 ) );
+		$wpdb->update( $wpdb->prefix . 'dinia_customers', array( 'settings' => wp_json_encode( $settings ) ), array( 'id' => $cid ) );
+		return rest_ensure_response( array( 'success' => true ) );
+	}
+
+	/** Kundeneinstellungen lesen */
+	public function admin_get_customer_settings( $request ) {
+		global $wpdb;
+		$cid = (int) $request->get_param( 'id' );
+		$settings_json = $wpdb->get_var( $wpdb->prepare(
+			"SELECT settings FROM {$wpdb->prefix}dinia_customers WHERE id = %d", $cid
+		) );
+		$settings = $settings_json ? json_decode( $settings_json, true ) : array();
+		return rest_ensure_response( array( 'settings' => $settings ) );
+	}
+
+	/** Test-E-Mail senden */
+	public function admin_test_email( $request ) {
+		if ( ! class_exists( 'DINA_Mailer' ) ) {
+			return new WP_Error( 'no_mailer', 'Mailer nicht verfügbar.', array( 'status' => 500 ) );
+		}
+		$to = $request->get_param( 'email' );
+		if ( ! $to || ! is_email( $to ) ) {
+			return new WP_Error( 'invalid_email', 'Ungültige E-Mail.', array( 'status' => 400 ) );
+		}
+		$result = DINA_Mailer::test( $to );
+		if ( true === $result ) {
+			return rest_ensure_response( array( 'success' => true, 'message' => 'Testmail gesendet!' ) );
+		}
+		return rest_ensure_response( array( 'success' => false, 'message' => $result ) );
+	}
+
+	/** CalDAV-Verbindung testen */
+	public function admin_test_caldav( $request ) {
+		if ( ! class_exists( 'DINA_CalDAV' ) ) {
+			return new WP_Error( 'no_caldav', 'CalDAV nicht verfügbar.', array( 'status' => 500 ) );
+		}
+		$caldav = new DINA_CalDAV();
+		$result = $caldav->test_connection();
+		return rest_ensure_response( $result );
+	}
+
+	/** Manuelle Buchung */
+	public function admin_create_booking( $request ) {
+		if ( ! class_exists( 'DINA_Booking' ) ) {
+			return new WP_Error( 'no_booking', 'Booking nicht verfügbar.', array( 'status' => 500 ) );
+		}
+		$data = array(
+			'date' => $request->get_param( 'date' ),
+			'time_start' => $request->get_param( 'time' ),
+			'time_end' => $request->get_param( 'time_end' ) ?: '',
+			'guest_name' => sanitize_text_field( $request->get_param( 'name' ) ?: '' ),
+			'guest_email' => sanitize_email( $request->get_param( 'email' ) ?: '' ),
+			'guest_phone' => sanitize_text_field( $request->get_param( 'phone' ) ?: '' ),
+			'guest_count' => (int) ( $request->get_param( 'party_size' ) ?: 2 ),
+			'notes' => sanitize_textarea_field( $request->get_param( 'notes' ) ?: '' ),
+			'table_id' => (int) ( $request->get_param( 'table_id' ) ?: 0 ),
+			'source' => 'admin',
+		);
+		$result = DINA_Booking::create_reservation( $data );
+		if ( is_wp_error( $result ) ) {
+			return new WP_Error( 'booking_failed', $result->get_error_message(), array( 'status' => 500 ) );
+		}
+		return rest_ensure_response( array( 'success' => true, 'reservation_id' => $result ) );
 	}
 }

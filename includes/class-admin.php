@@ -80,6 +80,30 @@ class DINA_Admin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'handle_form_submissions' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_styles' ) );
+		add_action( 'wp_dashboard_setup', function() {
+			if ( ! current_user_can( 'manage_options' ) ) return;
+			wp_add_dashboard_widget( 'dinia_dashboard_widget', 'Dinia – Heutige Reservierungen', function() {
+				global $wpdb;
+				$today = current_time( 'Y-m-d' );
+				$rows = $wpdb->get_results( $wpdb->prepare(
+					"SELECT r.*, t.name as table_name FROM {$wpdb->prefix}dinia_reservations r
+					 LEFT JOIN {$wpdb->prefix}dinia_tables t ON r.table_id = t.id
+					 WHERE r.date = %s AND r.status = 'confirmed'
+					 ORDER BY r.time_start ASC",
+					$today
+				) );
+				if ( empty( $rows ) ) { echo '<p>Keine Reservierungen für heute.</p>'; return; }
+				echo '<table style="width:100%;border-collapse:collapse;">';
+				echo '<tr style="background:#f5f5f5;"><th style="padding:6px;text-align:left;border-bottom:1px solid #ddd;">Zeit</th><th style="padding:6px;text-align:left;border-bottom:1px solid #ddd;">Gast</th><th style="padding:6px;text-align:left;border-bottom:1px solid #ddd;">Pers.</th><th style="padding:6px;text-align:left;border-bottom:1px solid #ddd;">Tisch</th></tr>';
+				foreach ( $rows as $r ) {
+					echo '<tr><td style="padding:4px 6px;border-bottom:1px solid #eee;">' . esc_html( $r->time_start ) . '</td>';
+					echo '<td style="padding:4px 6px;border-bottom:1px solid #eee;">' . esc_html( $r->guest_name ) . '</td>';
+					echo '<td style="padding:4px 6px;border-bottom:1px solid #eee;">' . (int) $r->guest_count . '</td>';
+					echo '<td style="padding:4px 6px;border-bottom:1px solid #eee;">' . esc_html( $r->table_name ?: '—' ) . '</td></tr>';
+				}
+				echo '</table>';
+			} );
+		} );
 	}
 
 	/**
@@ -90,6 +114,11 @@ class DINA_Admin {
 		if ( ! $screen || strpos( $screen->id, 'dinia' ) === false ) {
 			return;
 		}
+
+		wp_enqueue_script( 'dinia-admin', DINIA_PLUGIN_URL . 'assets/admin.js', array( 'jquery' ), DINIA_VERSION, true );
+		wp_localize_script( 'dinia-admin', 'wpApiSettings', array(
+			'nonce' => wp_create_nonce( 'wp_rest' ),
+		) );
 		?>
 		<style>
 			.dinia-wrap {
@@ -323,6 +352,279 @@ class DINA_Admin {
 			.dinia-mb-20 {
 				margin-bottom: 20px;
 			}
+
+						/* ─── Restaurant-Konfiguration: Farbschema #f5f5f5 / #ff6b00 ─── */
+			.dinia-rest-wrap {
+				max-width: 1200px;
+				margin: 20px auto;
+				background: #f5f5f5;
+				padding: 20px;
+				border-radius: 8px;
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+			}
+			.dinia-rest-wrap h1 {
+				font-size: 24px;
+				font-weight: 600;
+				color: #1d2327;
+				margin-bottom: 20px;
+			}
+			.dinia-rest-wrap h2 {
+				font-size: 18px;
+				font-weight: 500;
+				color: #2c3338;
+				margin: 24px 0 12px;
+				border-bottom: 2px solid #ff6b00;
+				padding-bottom: 6px;
+			}
+			.dinia-rest-card {
+				background: #fff;
+				border: 1px solid #dcdcde;
+				border-radius: 8px;
+				padding: 24px;
+				margin-bottom: 20px;
+				box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+			}
+			.dinia-rest-btn-primary {
+				background: #ff6b00;
+				color: #fff;
+				border-color: #ff6b00;
+			}
+			.dinia-rest-btn-primary:hover {
+				background: #e05e00;
+				color: #fff;
+			}
+			.dinia-rest-btn-secondary {
+				background: #f6f7f7;
+				color: #ff6b00;
+				border-color: #ff6b00;
+			}
+			.dinia-rest-btn-secondary:hover {
+				background: #f0f0f1;
+			}
+			.dinia-rest-btn-danger {
+				background: #d63638;
+				color: #fff;
+				border-color: #d63638;
+			}
+			.dinia-rest-btn-danger:hover {
+				background: #b32d2e;
+			}
+			.dinia-rest-table {
+				width: 100%;
+				border-collapse: collapse;
+				font-size: 14px;
+			}
+			.dinia-rest-table th {
+				background: #ff6b00;
+				color: #fff;
+				font-weight: 600;
+				text-align: left;
+				padding: 10px 12px;
+				border-bottom: 2px solid #e05e00;
+				white-space: nowrap;
+			}
+			.dinia-rest-table td {
+				padding: 10px 12px;
+				border-bottom: 1px solid #f0f0f1;
+				vertical-align: middle;
+			}
+			.dinia-rest-table tr:nth-child(even) td {
+				background: #fafafa;
+			}
+			.dinia-rest-table tr:hover td {
+				background: #fff3e6;
+			}
+			.dinia-rest-form label {
+				display: block;
+				font-weight: 600;
+				margin-bottom: 4px;
+				color: #2c3338;
+			}
+			.dinia-rest-form .form-row {
+				margin-bottom: 16px;
+			}
+			.dinia-rest-form input[type="text"],
+			.dinia-rest-form input[type="email"],
+			.dinia-rest-form input[type="password"],
+			.dinia-rest-form input[type="number"],
+			.dinia-rest-form input[type="date"],
+			.dinia-rest-form input[type="time"],
+			.dinia-rest-form select,
+			.dinia-rest-form textarea {
+				width: 100%;
+				max-width: 480px;
+				padding: 8px 12px;
+				border: 1px solid #8c8f94;
+				border-radius: 4px;
+				font-size: 14px;
+				line-height: 1.4;
+			}
+			.dinia-rest-form input[type="color"] {
+				width: 60px;
+				height: 36px;
+				cursor: pointer;
+				vertical-align: middle;
+				border: 1px solid #8c8f94;
+				border-radius: 4px;
+				padding: 2px;
+			}
+			.dinia-rest-customer-selector {
+				background: #fff;
+				border: 1px solid #ff6b00;
+				border-radius: 6px;
+				padding: 16px 20px;
+				margin-bottom: 20px;
+				display: flex;
+				align-items: center;
+				gap: 12px;
+			}
+			.dinia-rest-customer-selector label {
+				font-weight: 600;
+				color: #2c3338;
+				white-space: nowrap;
+			}
+			.dinia-rest-customer-selector select {
+				min-width: 250px;
+				padding: 6px 10px;
+				border: 1px solid #8c8f94;
+				border-radius: 4px;
+				font-size: 14px;
+			}
+			.dinia-rest-modal {
+				display: none;
+				position: fixed;
+				z-index: 9999;
+				left: 0;
+				top: 0;
+				width: 100%;
+				height: 100%;
+				overflow: auto;
+				background: rgba(0,0,0,0.5);
+			}
+			.dinia-rest-modal-content {
+				background: #fff;
+				margin: 10% auto;
+				padding: 30px;
+				border-radius: 8px;
+				max-width: 520px;
+				box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+			}
+			.dinia-rest-modal-content h2 {
+				border-bottom: 2px solid #ff6b00;
+				padding-bottom: 10px;
+				margin-top: 0;
+			}
+			.dinia-rest-status {
+				padding: 6px 12px;
+				border-radius: 4px;
+				font-size: 13px;
+				font-weight: 500;
+			}
+			.dinia-rest-status-ok {
+				background: #d4f4d4;
+				color: #005c1f;
+			}
+			.dinia-rest-status-error {
+				background: #fce5e5;
+				color: #8a1f1f;
+			}
+			.dinia-rest-code-box {
+				background: #f5f5f5;
+				border: 1px dashed #ff6b00;
+				border-radius: 4px;
+				padding: 16px;
+				font-family: "Courier New", monospace;
+				font-size: 13px;
+				word-break: break-all;
+				margin: 8px 0;
+				position: relative;
+				overflow-x: auto;
+			}
+			.dinia-rest-code-box code {
+				white-space: pre-wrap;
+			}
+			.dinia-rest-copy-btn {
+				position: absolute;
+				top: 8px;
+				right: 8px;
+				background: #ff6b00;
+				color: #fff;
+				border: none;
+				padding: 4px 12px;
+				border-radius: 4px;
+				cursor: pointer;
+				font-size: 12px;
+			}
+			.dinia-rest-copy-btn:hover {
+				background: #e05e00;
+			}
+			.dinia-rest-hours-table th {
+				background: #ff6b00;
+				color: #fff;
+				padding: 8px 12px;
+				text-align: left;
+				font-size: 13px;
+			}
+			.dinia-rest-hours-table td {
+				padding: 8px 12px;
+				border-bottom: 1px solid #e5e5e5;
+				vertical-align: middle;
+			}
+			.dinia-rest-hours-table tr:hover td {
+				background: #fff3e6;
+			}
+			.dinia-rest-filter-bar {
+				background: #fff;
+				border: 1px solid #dcdcde;
+				border-radius: 6px;
+				padding: 16px;
+				margin-bottom: 16px;
+				display: flex;
+				gap: 12px;
+				align-items: end;
+				flex-wrap: wrap;
+			}
+			.dinia-rest-filter-bar label {
+				font-weight: 600;
+				font-size: 13px;
+				color: #2c3338;
+			}
+			.dinia-rest-filter-bar select,
+			.dinia-rest-filter-bar input {
+				padding: 6px 10px;
+				border: 1px solid #8c8f94;
+				border-radius: 4px;
+			}
+			.dinia-rest-success {
+				background: #d4f4d4;
+				border: 1px solid #00a32a;
+				border-radius: 4px;
+				padding: 12px 16px;
+				margin-bottom: 16px;
+				color: #005c1f;
+				font-size: 14px;
+			}
+			.dinia-rest-error {
+				background: #fce5e5;
+				border: 1px solid #d63638;
+				border-radius: 4px;
+				padding: 12px 16px;
+				margin-bottom: 16px;
+				color: #8a1f1f;
+				font-size: 14px;
+			}
+			.dinia-rest-badge-confirmed {
+				background: #d4f4d4;
+				color: #005c1f;
+			}
+			.dinia-rest-badge-cancelled {
+				background: #fce5e5;
+				color: #8a1f1f;
+			}
+			.dinia-rest-badge-pending {
+				background: #fef5d4;
+				color: #996b00;
+			}
 		</style>
 		<?php
 	}
@@ -384,6 +686,89 @@ class DINA_Admin {
 			'manage_options',
 			'dinia-settings',
 			array( $this, 'render_settings' )
+		);
+
+		// ─── Restaurant-Konfiguration (9 neue Tabs) ───
+
+		add_submenu_page(
+			'dinia',
+			'Öffnungszeiten',
+			'Öffnungszeiten',
+			'manage_options',
+			'dinia-rest-hours',
+			array( $this, 'render_rest_hours' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'Tische',
+			'Tische',
+			'manage_options',
+			'dinia-rest-tables',
+			array( $this, 'render_rest_tables' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'Restaurant-Einstellungen',
+			'Restaurant',
+			'manage_options',
+			'dinia-rest-settings',
+			array( $this, 'render_rest_settings' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'E-Mail (Brevo)',
+			'E-Mail',
+			'manage_options',
+			'dinia-rest-email',
+			array( $this, 'render_rest_email' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'CalDAV-Kalender',
+			'CalDAV',
+			'manage_options',
+			'dinia-rest-caldav',
+			array( $this, 'render_rest_caldav' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'Neue Buchung',
+			'Neue Buchung',
+			'manage_options',
+			'dinia-rest-new-booking',
+			array( $this, 'render_rest_new_booking' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'Reservierungen',
+			'Reservierungen',
+			'manage_options',
+			'dinia-rest-reservations',
+			array( $this, 'render_rest_reservations' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'Einbetten',
+			'Einbetten',
+			'manage_options',
+			'dinia-rest-embed',
+			array( $this, 'render_rest_embed' )
+		);
+
+		add_submenu_page(
+			'dinia',
+			'Affiliate',
+			'Affiliate',
+			'manage_options',
+			'dinia-rest-affiliate',
+			array( $this, 'render_rest_affiliate' )
 		);
 	}
 

@@ -58,6 +58,11 @@ class DINA_Mailer {
         ) );
 
         if ( is_wp_error( $response ) ) {
+            // Fallback: wp_mail() versuchen.
+            if ( ! empty( $to ) && ! empty( $subject ) && ! empty( $body ) ) {
+                $wp_to = is_array( $to ) ? $to[0]['email'] : $to;
+                wp_mail( $wp_to, $subject, $body );
+            }
             return 'Brevo Fehler: ' . $response->get_error_message();
         }
 
@@ -69,6 +74,13 @@ class DINA_Mailer {
         $body_resp = wp_remote_retrieve_body( $response );
         $data = json_decode( $body_resp, true );
         $msg = isset( $data['message'] ) ? $data['message'] : 'HTTP ' . $code;
+
+        // Fallback: wp_mail() bei Brevo-Fehler versuchen.
+        if ( ! empty( $to ) && ! empty( $subject ) && ! empty( $body ) ) {
+            $wp_to = is_array( $to ) ? $to[0]['email'] : $to;
+            wp_mail( $wp_to, $subject, $body );
+        }
+
         return 'Brevo Fehler: ' . $msg;
     }
 

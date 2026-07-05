@@ -3,7 +3,7 @@
  * Plugin Name: Dinia – GoBookMe SaaS
  * Plugin URI:  https://dinia.gomeetme.com
  * Description: Multi-User-Reservierungssystem für Restaurants. Mollie Billing, JS-Widget, API-Key-Auth.
- * Version:     1.0.3
+ * Version:     1.1.0
  * Author:      Dinia (GoFonIA)
  * Text Domain: dinia
  * Domain Path: /languages
@@ -13,7 +13,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'DINIA_VERSION', '1.0.3' );
+define( 'DINIA_VERSION', '1.1.0' );
 define( 'DINIA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DINIA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -31,6 +31,9 @@ require_once DINIA_PLUGIN_DIR . 'includes/class-mailer.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-rest-api.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-admin.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-signup.php';
+
+// WP Cron Hook for reminder emails
+add_action( 'dinia_reminder_event', array( 'DINA_Booking', 'send_reminder_email' ) );
 
 // Bootstrap
 new DINA_REST_API();
@@ -197,6 +200,31 @@ function dinia_activate() {
         update_option( 'dinia_default_plans_installed', true );
     }
 
+    // Demo-Tische anlegen (nur wenn keine existieren)
+    $table_exists = $wpdb->get_var( "SHOW TABLES LIKE '{$wpdb->prefix}dinia_tables'" );
+    if ( $table_exists ) {
+        $has_tables = $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->prefix}dinia_tables WHERE customer_id = 0" );
+        if ( ! $has_tables ) {
+            $demo_tables = [
+                ['name' => 'Tisch 1', 'seats' => 2, 'position' => 'indoor', 'combinable' => 1],
+                ['name' => 'Tisch 2', 'seats' => 2, 'position' => 'indoor', 'combinable' => 1],
+                ['name' => 'Tisch 3', 'seats' => 4, 'position' => 'indoor', 'combinable' => 0],
+                ['name' => 'Tisch 4', 'seats' => 4, 'position' => 'indoor', 'combinable' => 0],
+                ['name' => 'Tisch 5', 'seats' => 6, 'position' => 'indoor', 'combinable' => 0],
+                ['name' => 'Tisch 6', 'seats' => 6, 'position' => 'indoor', 'combinable' => 0],
+                ['name' => 'Terrasse 1', 'seats' => 4, 'position' => 'outdoor', 'combinable' => 1],
+                ['name' => 'Terrasse 2', 'seats' => 4, 'position' => 'outdoor', 'combinable' => 1],
+                ['name' => 'Bar', 'seats' => 2, 'position' => 'bar', 'combinable' => 0],
+            ];
+            foreach ( $demo_tables as $t ) {
+                $wpdb->insert( $wpdb->prefix . 'dinia_tables', [
+                    'customer_id' => 0, 'name' => $t['name'], 'seats' => $t['seats'],
+                    'position' => $t['position'], 'combinable' => $t['combinable'], 'active' => 1,
+                ] );
+            }
+        }
+    }
+
     // Flush rewrite rules
     flush_rewrite_rules();
 }
@@ -276,3 +304,22 @@ add_shortcode( 'dinia_booking', function( $atts ) {
 
     return '<div id="dinia-widget"></div>';
 } );
+
+/**
+ * Darken a hex color by a given amount.
+ */
+function dinia_darken_color( $hex, $amount = 20 ) {
+    $hex = ltrim( $hex, '#' );
+    $r = max( 0, hexdec( substr( $hex, 0, 2 ) ) - $amount );
+    $g = max( 0, hexdec( substr( $hex, 2, 2 ) ) - $amount );
+    $b = max( 0, hexdec( substr( $hex, 4, 2 ) ) - $amount );
+    return sprintf( '#%02x%02x%02x', $r, $g, $b );
+}
+
+/**
+ * Translate position key to German label.
+ */
+function dinia_position_label( $pos ) {
+    $labels = array( 'indoor' => 'Innen', 'outdoor' => 'Terrasse', 'bar' => 'Bar' );
+    return $labels[ $pos ] ?? $pos;
+}
