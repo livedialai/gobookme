@@ -1309,7 +1309,20 @@ class DINA_REST_API {
 							}
 							$html .= '</div>';
 							$html .= '<p>Vielen Dank für Ihre Reservierung! Wir freuen uns auf Ihren Besuch.</p>';
-							$html .= '<p style="font-size:12px;color:#999;">Sollten Sie Ihren Termin nicht wahrnehmen können, bitten wir um rechtzeitige Absage.</p>';
+							$cancel_phone = $settings['cancel_phone'] ?? '';
+							$cancel_email = $settings['cancel_email'] ?? '';
+							if ( ! empty( $cancel_phone ) || ! empty( $cancel_email ) ) {
+								$html .= '<p style="font-size:12px;color:#999;">Sollten Sie Ihren Termin nicht wahrnehmen können, bitten wir um rechtzeitige Absage';
+								if ( ! empty( $cancel_phone ) ) {
+									$html .= ' unter <strong>' . esc_html( $cancel_phone ) . '</strong>';
+								}
+								if ( ! empty( $cancel_email ) ) {
+									$html .= ' oder per E-Mail an <strong>' . esc_html( $cancel_email ) . '</strong>';
+								}
+								$html .= '.</p>';
+							} else {
+								$html .= '<p style="font-size:12px;color:#999;">Sollten Sie Ihren Termin nicht wahrnehmen können, bitten wir um rechtzeitige Absage.</p>';
+							}
 
 							$html_body = DINA_Mailer::build_html( $subject, $html, $restaurant_name );
 							DINA_Mailer::send(
@@ -1327,6 +1340,8 @@ class DINA_REST_API {
 						'success'        => true,
 						'reservation_id' => $result,
 						'message'        => __( 'Reservierung bestätigt.', 'dinia' ),
+						'cancel_phone'   => $settings['cancel_phone'] ?? '',
+						'cancel_email'   => $settings['cancel_email'] ?? '',
 					];
 				}
 				if ( is_wp_error( $result ) ) {

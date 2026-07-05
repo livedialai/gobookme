@@ -939,15 +939,17 @@ class DINA_Admin {
 			$customer_id = isset( $_POST['rest_customer_id'] ) ? (int) $_POST['rest_customer_id'] : 0;
 			if ( $customer_id > 0 ) {
 				$settings = array(
-					'restaurant_name'   => sanitize_text_field( $_POST['restaurant_name'] ?? '' ),
-					'slot_duration'     => min( 180, max( 30, (int) ( $_POST['slot_duration'] ?? 120 ) ) ),
-					'slot_interval'     => in_array( (int) ( $_POST['slot_interval'] ?? 30 ), array( 15, 30, 60 ) ) ? (int) $_POST['slot_interval'] : 30,
-					'min_advance_hours' => min( 48, max( 1, (int) ( $_POST['min_advance_hours'] ?? 2 ) ) ),
-					'max_advance_days'  => min( 90, max( 1, (int) ( $_POST['max_advance_days'] ?? 30 ) ) ),
-					'primary_color'     => sanitize_hex_color( $_POST['primary_color'] ?? '#ff6b00' ),
-					'email_confirm'     => isset( $_POST['email_confirm'] ) ? 1 : 0,
-					'email_reminder'    => isset( $_POST['email_reminder'] ) ? 1 : 0,
-					'reminder_hours'    => min( 168, max( 1, (int) ( $_POST['reminder_hours'] ?? 24 ) ) ),
+					'restaurant_name'    => sanitize_text_field( $_POST['restaurant_name'] ?? '' ),
+					'cancel_phone'       => sanitize_text_field( $_POST['cancel_phone'] ?? '' ),
+					'cancel_email'       => sanitize_email( $_POST['cancel_email'] ?? '' ),
+					'slot_duration'      => min( 180, max( 30, (int) ( $_POST['slot_duration'] ?? 120 ) ) ),
+					'slot_interval'      => in_array( (int) ( $_POST['slot_interval'] ?? 30 ), array( 15, 30, 60 ) ) ? (int) $_POST['slot_interval'] : 30,
+					'min_advance_hours'  => min( 48, max( 1, (int) ( $_POST['min_advance_hours'] ?? 2 ) ) ),
+					'max_advance_days'   => min( 90, max( 1, (int) ( $_POST['max_advance_days'] ?? 30 ) ) ),
+					'primary_color'      => sanitize_hex_color( $_POST['primary_color'] ?? '#ff6b00' ),
+					'email_confirm'      => isset( $_POST['email_confirm'] ) ? 1 : 0,
+					'email_reminder'     => isset( $_POST['email_reminder'] ) ? 1 : 0,
+					'reminder_hours'     => min( 168, max( 1, (int) ( $_POST['reminder_hours'] ?? 24 ) ) ),
 					'admin_notify_email' => sanitize_email( $_POST['admin_notify_email'] ?? get_option( 'admin_email' ) ),
 				);
 				$this->wpdb->update(
@@ -1977,6 +1979,20 @@ class DINA_Admin {
 							<label>Primärfarbe</label>
 							<input type="color" name="primary_color" value="<?php echo esc_attr( $settings['primary_color'] ?? '#ff6b00' ); ?>">
 							<code style="margin-left:8px;"><?php echo esc_html( $settings['primary_color'] ?? '#ff6b00' ); ?></code>
+						</div>
+					</div>
+
+					<h2>Stornierungs-Kontakt</h2>
+					<div class="dinia-rest-form">
+						<div class="form-row">
+							<label>Stornierungs-Telefon</label>
+							<input type="tel" name="cancel_phone" value="<?php echo esc_attr( $settings['cancel_phone'] ?? '' ); ?>" class="regular-text" placeholder="z.B. +49 471 12345678">
+							<span style="color:#666;font-size:12px;">Wird auf der Erfolgsseite und in der Bestätigungsmail angezeigt.</span>
+						</div>
+						<div class="form-row">
+							<label>Stornierungs-E-Mail</label>
+							<input type="email" name="cancel_email" value="<?php echo esc_attr( $settings['cancel_email'] ?? '' ); ?>" class="regular-text" placeholder="z.B. stornierung@restaurant.de">
+							<span style="color:#666;font-size:12px;">Optional – falls Gäste per Mail stornieren können sollen.</span>
 						</div>
 					</div>
 
