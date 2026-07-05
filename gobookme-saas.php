@@ -3,7 +3,7 @@
  * Plugin Name: Dinia – GoBookMe SaaS
  * Plugin URI:  https://dinia.gomeetme.com
  * Description: Multi-User-Reservierungssystem für Restaurants. Mollie Billing, JS-Widget, API-Key-Auth.
- * Version:     1.1.7
+ * Version:     1.1.8
  * Author:      Dinia (GoFonIA)
  * Text Domain: dinia
  * Domain Path: /languages
@@ -13,7 +13,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'DINIA_VERSION', '1.1.7' );
+define( 'DINIA_VERSION', '1.1.8' );
 define( 'DINIA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DINIA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
@@ -37,13 +37,30 @@ require_once DINIA_PLUGIN_DIR . 'includes/class-coupon.php';
 // WP Cron Hook for reminder emails
 add_action( 'dinia_reminder_event', array( 'DINA_Booking', 'send_reminder_email' ) );
 
-// Shortcode-Rendering in FSE-Block-Themes erzwingen (do_blocks frisst Shortcodes)
+/**
+ * Shortcode-Rendering in FSE-Block-Themes erzwingen (do_blocks frisst Shortcodes)
+ */
 add_filter( 'the_content', function ( $content ) {
 	if ( has_shortcode( $content, 'dinia_register' ) || has_shortcode( $content, 'dinia_account' ) ) {
 		return do_shortcode( $content );
 	}
 	return $content;
 }, 0 );
+
+// Coupon-Migration: SOMMER2026 auf to_price/1.00€ updaten
+add_action( 'admin_init', function () {
+	$db_version = get_option( 'dinia_db_version', '' );
+	if ( '1.1.8' !== $db_version ) {
+		global $wpdb;
+		$wpdb->update(
+			$wpdb->prefix . 'dinia_coupons',
+			array( 'discount_type' => 'to_price', 'discount_value' => 1.00 ),
+			array( 'code' => 'Sommer2026' )
+		);
+		// Auch seed in class-coupon.php anpassen – DB-Version speichern
+		update_option( 'dinia_db_version', '1.1.8' );
+	}
+} );
 
 // Bootstrap
 new DINA_REST_API();

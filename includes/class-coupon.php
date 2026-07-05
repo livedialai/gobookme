@@ -86,7 +86,7 @@ class DINA_Coupon {
 				$this->table,
 				array(
 					'code'           => 'Sommer2026',
-					'discount_type'  => 'fixed',
+					'discount_type'  => 'to_price',
 					'discount_value' => 1.00,
 					'max_uses'       => 100,
 					'used_count'     => 0,
@@ -169,14 +169,16 @@ class DINA_Coupon {
 
 		$coupon = $validation['data'];
 
-		if ( 'percent' === $coupon['discount_type'] ) {
-			$discount = $original_price * ( (float) $coupon['discount_value'] / 100 );
+		if ( 'to_price' === $coupon['discount_type'] ) {
+			$final_price = (float) $coupon['discount_value'];
+		} elseif ( 'percent' === $coupon['discount_type'] ) {
+			$discount    = $original_price * ( (float) $coupon['discount_value'] / 100 );
+			$final_price = max( 0, $original_price - $discount );
 		} else {
 			// fixed
-			$discount = (float) $coupon['discount_value'];
+			$discount    = (float) $coupon['discount_value'];
+			$final_price = max( 0, $original_price - $discount );
 		}
-
-		$final_price = max( 0, $original_price - $discount );
 
 		return array(
 			'success' => true,
@@ -246,7 +248,7 @@ class DINA_Coupon {
 	public function create( array $data ): array {
 		$fields = array(
 			'code'           => $data['code'] ?? '',
-			'discount_type'  => in_array( $data['discount_type'] ?? '', array( 'fixed', 'percent' ), true )
+			'discount_type'  => in_array( $data['discount_type'] ?? '', array( 'fixed', 'percent', 'to_price' ), true )
 				? $data['discount_type']
 				: 'fixed',
 			'discount_value' => (float) ( $data['discount_value'] ?? 0 ),

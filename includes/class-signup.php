@@ -600,8 +600,8 @@ class DINA_Signup {
 			$coupon      = new DINA_Coupon();
 			$discount    = $coupon->apply_discount( $customer->coupon_code, $base_price );
 			if ( $discount['success'] ) {
-				$price = $discount['price'];
-				$coupon_info = sprintf( ' (Rabatt: %s)', $customer->coupon_code );
+				$price       = $discount['data'];
+				$coupon_info = sprintf( ' (Rabattcode: %s)', $customer->coupon_code );
 			}
 		}
 
