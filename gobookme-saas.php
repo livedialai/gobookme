@@ -242,12 +242,30 @@ add_action( 'wp_enqueue_scripts', function() {
  * Nutzt data-tenant aus Query-Parameter ?tid= oder shortcode-Attribut.
  */
 add_shortcode( 'dinia_booking', function( $atts ) {
-    $atts = shortcode_atts( [ 'tenant' => '' ], $atts );
-    $tenant = ! empty( $atts['tenant'] ) ? esc_attr( $atts['tenant'] ) : ( $_GET['tid'] ?? '' );
+    // Tenant aus Attribut (normale Quotes), Positional oder ?tid= ermitteln
+    $tenant = '';
+
+    // 1. Attribut [dinia_booking tenant="test-restaurant"]
+    $a = shortcode_atts( [ 'tenant' => '' ], $atts );
+    if ( ! empty( $a['tenant'] ) ) {
+        $tenant = $a['tenant'];
+    }
+
+    // 2. Positional [dinia_booking test-restaurant]
+    if ( ! $tenant && is_array( $atts ) && isset( $atts[0] ) && is_string( $atts[0] ) && trim( $atts[0] ) ) {
+        $tenant = trim( $atts[0] );
+    }
+
+    // 3. GET-Parameter ?tid=
+    if ( ! $tenant ) {
+        $tenant = $_GET['tid'] ?? '';
+    }
 
     if ( ! $tenant ) {
         return '<p style="color:#999;">Dinia: Bitte Tenant-ID angeben (z.B. <code>[dinia_booking tenant="mein-restaurant"]</code>).</p>';
     }
+
+    $tenant = esc_attr( $tenant );
 
     wp_enqueue_style( 'dinia-widget' );
     wp_enqueue_script( 'dinia-widget' );
