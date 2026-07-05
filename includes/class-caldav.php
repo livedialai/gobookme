@@ -43,7 +43,7 @@ class DINA_CalDAV {
                 'url'      => 'https://apidata.googleusercontent.com/caldav/v2',
                 'username' => 'name@gmail.com',
                 'calendar' => 'default',
-                'hint'     => 'Benutzername = Gmail-Adresse. Passwort = App-Passwort.',
+                'hint'     => 'Benutzername = Gmail-Adresse. Passwort = APP-PASSWORT (myaccount.google.com/apppasswords) – nicht das Google-Passwort!',
             ),
             'gmx' => array(
                 'name'     => 'GMX',

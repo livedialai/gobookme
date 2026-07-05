@@ -773,14 +773,53 @@ API-Key: <?php echo esc_html( $customer->api_key_hint ?: 'Nach Generierung oben 
 				<p><a href="<?php echo esc_url( plugin_dir_url( dirname( __FILE__ ) ) . 'assets/dinia-anleitung.pdf' ); ?>" target="_blank" class="dinia-btn-primary-s dinia-btn-s" style="text-decoration:none;">⬇️ Anleitung herunterladen (PDF)</a></p>
 				<p style="color:#666;font-size:0.85rem;">Verständliche Schritt-für-Schritt-Anleitung für Restaurantbetreiber.</p>
 
-				<h3 style="margin:20px 0 8px;">📅 Kalender-Apps (CalDAV-kompatibel)</h3>
-				<p>Sehen Sie Ihre Buchungen auf dem Handy oder PC – mit der kostenlosen App <strong>OneCalendar</strong>:</p>
+				<h3 style="margin:20px 0 8px;">📅 Kalender-Sync (CalDAV) einrichten</h3>
+				<p>Gehen Sie zu <strong>⚙️ Einstellungen → 📅 CalDAV-Kalender</strong> und wählen Sie Ihren Anbieter aus.</p>
+
+				<h4 style="margin:16px 0 6px;">🔴 Google Calendar</h4>
+				<ol style="margin:4px 0 8px 20px;line-height:1.7;">
+					<li>Öffnen Sie <a href="https://myaccount.google.com/u/1/apppasswords" target="_blank"><strong>https://myaccount.google.com/u/1/apppasswords</strong></a></li>
+					<li>👉 <strong>App-Passwort erstellen</strong> → Name z.B. „Dinia" eingeben</li>
+					<li>Google zeigt ein <strong>16-stelliges Passwort</strong> an – <span style="color:#dc3545;">sofort kopieren!</span></li>
+					<li>In den <strong>⚙️ Einstellungen → CalDAV-Kalender</strong>:</li>
+				</ol>
+				<div class="dinia-code-block">Anbieter:  Google Calendar
+URL:       https://apidata.googleusercontent.com/caldav/v2
+Benutzer:  Ihre Gmail-Adresse (z.B. advocube@gmail.com)
+Passwort:  Das 16-stellige App-Passwort (KEIN Google-Passwort!)
+Kalender:  default</div>
+				<p style="color:#dc3545;font-size:0.85rem;">⚠️ App-Passwort muss nur 1x erstellt werden. Google zeigt es nur einmal an.</p>
+
+				<h4 style="margin:16px 0 6px;">🔵 Infomaniak</h4>
+				<div class="dinia-code-block">Anbieter:  Infomaniak
+URL:       https://sync.infomaniak.com/calendars/GO01132/
+Benutzer:  Ihre Kundennummer (GO…)
+Passwort:  Ihr Infomaniak-Account-Passwort
+Kalender:  Kalender-ID (z.B. dbc10e70-...)</div>
+
+				<h4 style="margin:16px 0 6px;">🟢 GMX / web.de</h4>
+				<div class="dinia-code-block">Anbieter:  GMX oder web.de
+URL:       https://caldav.gmx.net  /  https://caldav.web.de
+Benutzer:  Vollständige E-Mail-Adresse
+Passwort:  Ihr GMX/web.de-Passwort
+Kalender:  default</div>
+
+				<h4 style="margin:16px 0 6px;">🟣 Apple iCloud</h4>
+				<div class="dinia-code-block">Anbieter:  Apple iCloud
+URL:       https://caldav.icloud.com/
+Benutzer:  Ihre Apple-ID (E-Mail)
+Passwort:  App-spezifisches Passwort (appleid.apple.com)
+Kalender:  default</div>
+
+				<h3 style="margin:24px 0 8px;">📱 Kalender-Apps</h3>
+				<p>Nach der Einrichtung sehen Sie alle Buchungen auf dem Handy oder PC. Empfohlene App: <strong>OneCalendar</strong> (unterstützt CalDAV):</p>
 				<ul style="margin:8px 0 8px 20px;">
 					<li><strong>Windows:</strong> <a href="https://www.microsoft.com/store/apps/9wzdncrdr0sf" target="_blank">Microsoft Store</a></li>
 					<li><strong>iPhone/iPad:</strong> <a href="https://apps.apple.com/app/id1238379385" target="_blank">App Store</a></li>
 					<li><strong>Android:</strong> <a href="https://play.google.com/store/apps/details?id=biz.codespark.xcalendarapp" target="_blank">Google Play</a></li>
 				</ul>
-				<p style="color:#666;font-size:0.85rem;">Richten Sie einfach Ihren CalDAV-Kalender aus den <strong>Einstellungen</strong> ein, dann sehen Sie alle Buchungen in der App.</p>
+				<p style="color:#666;font-size:0.85rem;">👉 <strong>Android-Nutzer:</strong> Öffnen Sie einfach oben den Play Store Link – kein Google-Konto nötig, die App kann auch ohne Play Store als APK installiert werden.</p>
+				<p style="color:#666;font-size:0.85rem;">Öffnen Sie die App, wählen Sie <strong>CalDAV</strong> und geben Sie die Daten aus den <strong>⚙️ Einstellungen</strong> ein. Alle Buchungen erscheinen automatisch im Kalender.</p>
 			</div>
 
 			<!-- TAB: Abo -->
