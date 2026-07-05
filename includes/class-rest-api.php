@@ -1143,10 +1143,65 @@ class DINA_REST_API {
 					'guest_email' => $params['guest_email'] ?? $params['email'] ?? '',
 					'notes'       => $params['notes'] ?? $params['note'] ?? '',
 				];
-				// Map party_size -> guest_count
 				$data['guest_count'] = $data['party_size'];
+
 				$result = DINA_Booking::create_reservation( $data );
 				if ( $result && ! is_wp_error( $result ) ) {
+					// CalDAV-Sync (Infomaniak etc.)
+					try {
+						$caldav = new DINA_CalDAV();
+						if ( $caldav->is_configured() ) {
+							$caldav->create_event(
+								$data['date'],
+								$data['time_start'],
+								$data['time_end'],
+								$data['guest_name'],
+								$data['party_size'],
+								$params['table_name'] ?? '',
+								$data['notes'],
+								$data['guest_email'],
+								$data['guest_phone']
+							);
+						}
+					} catch ( Exception $e ) {
+						error_log( '[Dinia] CalDAV sync failed: ' . $e->getMessage() );
+					}
+
+					// E-Mail-Bestätigung via Brevo
+					try {
+						if ( ! empty( $data['guest_email'] ) ) {
+							$restaurant_name = $customer->name ?? ( $settings['restaurant_name'] ?? 'Restaurant' );
+							$date_formatted  = date_i18n( 'l, j. F Y', strtotime( $data['date'] ) );
+							$subject         = sprintf( __( 'Ihre Reservierung bei %s', 'dinia' ), $restaurant_name );
+
+							$html  = '<h2>Reservierung bestätigt</h2>';
+							$html .= '<div class="details">';
+							$html .= '<p><strong>Datum:</strong> ' . esc_html( $date_formatted ) . '</p>';
+							$html .= '<p><strong>Uhrzeit:</strong> ' . esc_html( $data['time_start'] ) . ' – ' . esc_html( $data['time_end'] ) . '</p>';
+							$html .= '<p><strong>Personen:</strong> ' . (int) $data['party_size'] . '</p>';
+							$html .= '<p><strong>Name:</strong> ' . esc_html( $data['guest_name'] ) . '</p>';
+							if ( ! empty( $data['guest_phone'] ) ) {
+								$html .= '<p><strong>Telefon:</strong> ' . esc_html( $data['guest_phone'] ) . '</p>';
+							}
+							if ( ! empty( $data['notes'] ) ) {
+								$html .= '<p><strong>Notiz:</strong> ' . esc_html( $data['notes'] ) . '</p>';
+							}
+							$html .= '</div>';
+							$html .= '<p>Vielen Dank für Ihre Reservierung! Wir freuen uns auf Ihren Besuch.</p>';
+							$html .= '<p style="font-size:12px;color:#999;">Sollten Sie Ihren Termin nicht wahrnehmen können, bitten wir um rechtzeitige Absage.</p>';
+
+							$html_body = DINA_Mailer::build_html( $subject, $html, $restaurant_name );
+							DINA_Mailer::send(
+								$data['guest_email'],
+								$subject,
+								"Reservierung bestätigt: {$date_formatted} um {$data['time_start']} Uhr",
+								$html_body
+							);
+						}
+					} catch ( Exception $e ) {
+						error_log( '[Dinia] Brevo mail failed: ' . $e->getMessage() );
+					}
+
 					return [
 						'success'        => true,
 						'reservation_id' => $result,
