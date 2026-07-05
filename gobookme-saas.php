@@ -32,6 +32,7 @@ require_once DINIA_PLUGIN_DIR . 'includes/class-rest-api.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-admin.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-signup.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-account.php';
+require_once DINIA_PLUGIN_DIR . 'includes/class-coupon.php';
 
 // WP Cron Hook for reminder emails
 add_action( 'dinia_reminder_event', array( 'DINA_Booking', 'send_reminder_email' ) );
@@ -133,6 +134,17 @@ function dinia_activate() {
         PRIMARY KEY (id)
     ) $charset;";
     dbDelta( $sql );
+
+    // Coupon table
+    $coupon = new DINA_Coupon();
+    $coupon->create_table();
+
+    // Coupon-Code-Spalte in customers-Tabelle sicherstellen
+    $row = $wpdb->get_results( "SHOW COLUMNS FROM {$wpdb->prefix}dinia_customers LIKE 'coupon_code'" );
+    if ( empty( $row ) ) {
+        $wpdb->query( "ALTER TABLE {$wpdb->prefix}dinia_customers ADD COLUMN coupon_code VARCHAR(50) NOT NULL DEFAULT '' AFTER confirm_token" );
+    }
+
     // Booking tables (tables, reservations, hours)
     $sql = "CREATE TABLE {$wpdb->prefix}dinia_tables (
         id mediumint(9) NOT NULL AUTO_INCREMENT,
@@ -247,7 +259,7 @@ add_action( 'plugins_loaded', function() {
 register_uninstall_hook( __FILE__, 'dinia_uninstall' );
 function dinia_uninstall() {
     global $wpdb;
-    $tables = [ 'dinia_plans', 'dinia_customers', 'dinia_subscriptions', 'dinia_invoices', 'dinia_backups', 'dinia_tables', 'dinia_reservations', 'dinia_hours' ];
+    $tables = [ 'dinia_plans', 'dinia_customers', 'dinia_subscriptions', 'dinia_invoices', 'dinia_backups', 'dinia_coupons', 'dinia_tables', 'dinia_reservations', 'dinia_hours' ];
     foreach ( $tables as $t ) {
         $wpdb->query( "DROP TABLE IF EXISTS {$wpdb->prefix}{$t}" );
     }

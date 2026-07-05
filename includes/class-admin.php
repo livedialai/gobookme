@@ -61,6 +61,13 @@ class DINA_Admin {
 	private $backup;
 
 	/**
+	 * Instanz von DINA_Coupon.
+	 *
+	 * @var DINA_Coupon
+	 */
+	private $coupon;
+
+	/**
 	 * Konstruktor.
 	 *
 	 * Initialisiert DB-Verbindung, Hilfsklassen und WordPress-Hooks.
@@ -75,6 +82,7 @@ class DINA_Admin {
 		$this->plans     = new DINA_Plans();
 		$this->invoices  = new DINA_Invoices();
 		$this->backup    = new DINA_Backup();
+		$this->coupon    = new DINA_Coupon();
 
 		add_action( 'admin_menu', array( $this, 'add_menu_page' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
@@ -688,6 +696,15 @@ class DINA_Admin {
 			array( $this, 'render_settings' )
 		);
 
+		add_submenu_page(
+			'dinia',
+			'Rabattcodes',
+			'Rabattcodes',
+			'manage_options',
+			'dinia-coupons',
+			array( $this, 'render_coupons' )
+		);
+
 		// ─── Restaurant-Konfiguration (9 neue Tabs) ───
 
 		add_submenu_page(
@@ -898,6 +915,38 @@ class DINA_Admin {
 			if ( wp_verify_nonce( $_GET['_wpnonce'], 'dinia_delete_backup_' . (int) $_GET['id'] ) ) {
 				$this->backup->delete_backup( (int) $_GET['id'] );
 				wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-backups', 'deleted' => '1' ), admin_url( 'admin.php' ) ) );
+				exit;
+			}
+		}
+
+		// ─── Rabattcode speichern (anlegen / aktualisieren) ───
+		if ( isset( $_POST['dinia_save_coupon'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_coupon_nonce' ) ) {
+			$coupon_id = isset( $_POST['coupon_id'] ) ? (int) $_POST['coupon_id'] : 0;
+			$data      = array(
+				'code'           => sanitize_text_field( $_POST['code'] ?? '' ),
+				'discount_type'  => in_array( $_POST['discount_type'] ?? '', array( 'fixed', 'percent' ), true )
+					? $_POST['discount_type']
+					: 'fixed',
+				'discount_value' => (float) ( $_POST['discount_value'] ?? 0 ),
+				'max_uses'       => (int) ( $_POST['max_uses'] ?? 0 ),
+				'expires_at'     => sanitize_text_field( $_POST['expires_at'] ?? '' ),
+				'is_active'      => isset( $_POST['is_active'] ) ? 1 : 0,
+			);
+
+			if ( $coupon_id > 0 ) {
+				$this->coupon->update( $coupon_id, $data );
+			} else {
+				$this->coupon->create( $data );
+			}
+			wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-coupons', 'updated' => '1' ), admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		// ─── Rabattcode löschen ───
+		if ( isset( $_GET['action'], $_GET['id'], $_GET['_wpnonce'] ) && 'delete_coupon' === $_GET['action'] ) {
+			if ( wp_verify_nonce( $_GET['_wpnonce'], 'dinia_delete_coupon_' . (int) $_GET['id'] ) ) {
+				$this->coupon->delete( (int) $_GET['id'] );
+				wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-coupons', 'deleted' => '1' ), admin_url( 'admin.php' ) ) );
 				exit;
 			}
 		}
@@ -1674,6 +1723,125 @@ class DINA_Admin {
 						<button type="submit" class="dinia-btn dinia-btn-primary">Einstellungen speichern</button>
 					</div>
 				</form>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Rabattcodes-Seite rendern: Liste aller Coupons + Add/Edit-Formular.
+	 */
+	public function render_coupons() {
+		$coupon    = new DINA_Coupon();
+		$all       = $coupon->get_all();
+		$edit_id   = isset( $_GET['action'], $_GET['id'] ) && 'edit' === $_GET['action'] ? (int) $_GET['id'] : 0;
+		$edit_data = $edit_id > 0 ? $coupon->get_by_id( $edit_id ) : null;
+		?>
+		<div class="wrap dinia-wrap">
+			<div class="dinia-flex dinia-mb-20">
+				<h1 style="margin:0;">Rabattcodes (Coupons)</h1>
+			</div>
+
+			<?php if ( isset( $_GET['updated'] ) ) : ?>
+				<div class="dinia-alert dinia-alert-success">Rabattcode wurde gespeichert.</div>
+			<?php endif; ?>
+			<?php if ( isset( $_GET['deleted'] ) ) : ?>
+				<div class="dinia-alert dinia-alert-success">Rabattcode wurde gelöscht.</div>
+			<?php endif; ?>
+
+			<div class="dinia-card" style="margin-bottom:20px;">
+				<h2><?php echo $edit_data ? 'Rabattcode bearbeiten' : 'Neuen Rabattcode anlegen'; ?></h2>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=dinia-coupons' ) ); ?>" class="dinia-form">
+					<?php wp_nonce_field( 'dinia_coupon_nonce' ); ?>
+					<input type="hidden" name="coupon_id" value="<?php echo $edit_id; ?>" />
+
+					<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+						<div class="form-row">
+							<label for="c_code">Code *</label>
+							<input type="text" id="c_code" name="code" value="<?php echo $edit_data ? esc_attr( $edit_data['code'] ) : ''; ?>" required />
+						</div>
+						<div class="form-row">
+							<label for="c_discount_type">Rabatt-Typ</label>
+							<select id="c_discount_type" name="discount_type">
+								<option value="fixed" <?php selected( $edit_data ? $edit_data['discount_type'] : '', 'fixed' ); ?>>Fixbetrag (€)</option>
+								<option value="percent" <?php selected( $edit_data ? $edit_data['discount_type'] : '', 'percent' ); ?>>Prozent (%)</option>
+							</select>
+						</div>
+						<div class="form-row">
+							<label for="c_discount_value">Rabatt-Wert</label>
+							<input type="number" id="c_discount_value" name="discount_value" step="0.01" min="0" value="<?php echo $edit_data ? esc_attr( $edit_data['discount_value'] ) : ''; ?>" required />
+						</div>
+					</div>
+
+					<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:12px;">
+						<div class="form-row">
+							<label for="c_max_uses">Max. Nutzungen (0 = unbegrenzt)</label>
+							<input type="number" id="c_max_uses" name="max_uses" min="0" value="<?php echo $edit_data ? (int) $edit_data['max_uses'] : '0'; ?>" />
+						</div>
+						<div class="form-row">
+							<label for="c_expires_at">Gültig bis (leer = kein Ablauf)</label>
+							<input type="date" id="c_expires_at" name="expires_at" value="<?php echo $edit_data && ! empty( $edit_data['expires_at'] ) ? esc_attr( substr( $edit_data['expires_at'], 0, 10 ) ) : ''; ?>" />
+						</div>
+						<div class="form-row" style="display:flex;align-items:center;gap:8px;padding-top:22px;">
+							<input type="checkbox" id="c_is_active" name="is_active" value="1" <?php checked( $edit_data ? (int) $edit_data['is_active'] : 1, 1 ); ?> />
+							<label for="c_is_active" style="margin:0;">Aktiv</label>
+						</div>
+					</div>
+
+					<div style="margin-top:16px;display:flex;gap:10px;">
+						<button type="submit" name="dinia_save_coupon" class="dinia-btn dinia-btn-primary">
+							<?php echo $edit_data ? 'Rabattcode aktualisieren' : 'Rabattcode anlegen'; ?>
+						</button>
+						<?php if ( $edit_data ) : ?>
+							<a href="<?php echo esc_url( admin_url( 'admin.php?page=dinia-coupons' ) ); ?>" class="dinia-btn dinia-btn-secondary">Abbrechen</a>
+						<?php endif; ?>
+					</div>
+				</form>
+			</div>
+
+			<div class="dinia-card">
+				<h2>Alle Rabattcodes</h2>
+				<div class="dinia-table-wrap">
+					<table class="dinia-table">
+						<thead>
+							<tr>
+								<th>ID</th>
+								<th>Code</th>
+								<th>Rabatt</th>
+								<th>Genutzt / Max</th>
+								<th>Läuft ab</th>
+								<th>Aktiv</th>
+								<th>Aktionen</th>
+							</tr>
+						</thead>
+						<tbody>
+							<?php if ( empty( $all ) ) : ?>
+								<tr><td colspan="7" style="text-align:center;color:#646970;padding:30px;">Keine Rabattcodes vorhanden.</td></tr>
+							<?php else : ?>
+								<?php foreach ( $all as $c ) : ?>
+									<tr>
+										<td><?php echo (int) $c['id']; ?></td>
+										<td><strong><?php echo esc_html( $c['code'] ); ?></strong></td>
+										<td>
+											<?php if ( 'percent' === $c['discount_type'] ) : ?>
+												<?php echo esc_html( $c['discount_value'] ); ?> %
+											<?php else : ?>
+												<?php echo esc_html( number_format( (float) $c['discount_value'], 2 ) ); ?> €
+											<?php endif; ?>
+										</td>
+										<td><?php echo (int) $c['used_count']; ?> / <?php echo (int) $c['max_uses'] > 0 ? (int) $c['max_uses'] : '∞'; ?></td>
+										<td><?php echo ! empty( $c['expires_at'] ) ? esc_html( substr( $c['expires_at'], 0, 10 ) ) : '—'; ?></td>
+										<td><?php $c['is_active'] ? $this->render_status_badge( 'active' ) : $this->render_status_badge( 'inactive' ); ?></td>
+										<td>
+											<a href="<?php echo esc_url( admin_url( 'admin.php?page=dinia-coupons&action=edit&id=' . $c['id'] ) ); ?>" class="dinia-btn dinia-btn-secondary dinia-btn-sm">Bearbeiten</a>
+											<a href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin.php?page=dinia-coupons&action=delete_coupon&id=' . $c['id'] ), 'dinia_delete_coupon_' . $c['id'] ) ); ?>" class="dinia-btn dinia-btn-danger dinia-btn-sm" onclick="return confirm('Rabattcode wirklich löschen?')">Löschen</a>
+										</td>
+									</tr>
+								<?php endforeach; ?>
+							<?php endif; ?>
+						</tbody>
+					</table>
+				</div>
 			</div>
 		</div>
 		<?php

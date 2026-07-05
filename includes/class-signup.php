@@ -99,10 +99,17 @@ class DINA_Signup {
 			return;
 		}
 
-		// GET: Bestätigungs-Link
-		if ( isset( $_GET['dinia_confirm'] ) && ! empty( $_GET['dinia_confirm'] ) ) {
-			$token = sanitize_text_field( wp_unslash( $_GET['dinia_confirm'] ) );
-			$this->handle_confirmation( $token );
+		// GET: Zahlungs-Seite (nach Formular-Submit)
+		if ( isset( $_GET['dinia_pay'] ) && '1' === $_GET['dinia_pay'] && isset( $_GET['id'] ) && isset( $_GET['token'] ) ) {
+			$customer_id = (int) $_GET['id'];
+			$token       = sanitize_text_field( wp_unslash( $_GET['token'] ) );
+			$this->handle_payment_action( $customer_id, $token );
+			return;
+		}
+
+		// GET: Bestätigungs-Link (von Mollie-Redirect)
+		if ( isset( $_GET['dinia_confirmed'] ) && '1' === $_GET['dinia_confirmed'] ) {
+			$this->handle_confirmation();
 			return;
 		}
 	}
@@ -115,11 +122,11 @@ class DINA_Signup {
 	 * @return string HTML des Formulars oder der Meldung.
 	 */
 	public function render_form( $atts = array(), $content = '' ) {
-		// Erfolgsmeldungen nach Weiterleitung anzeigen
-		if ( isset( $_GET['dinia_success'] ) && '1' === $_GET['dinia_success'] ) {
-			return $this->render_success();
-		}
+		// Erfolgsseite nach Zahlung
 		if ( isset( $_GET['dinia_confirmed'] ) && '1' === $_GET['dinia_confirmed'] ) {
+			return $this->render_confirmed();
+		}
+		if ( isset( $_GET['dinia_success'] ) && '1' === $_GET['dinia_success'] ) {
 			return $this->render_confirmed();
 		}
 
@@ -174,6 +181,13 @@ class DINA_Signup {
 				</div>
 
 				<div class="dinia-field">
+					<label for="dinia_coupon"><?php esc_html_e( 'Rabattcode (optional)', 'dinia' ); ?></label>
+					<input type="text" id="dinia_coupon" name="dinia_coupon"
+						value="<?php echo isset( $_GET['dn_coupon'] ) ? esc_attr( sanitize_text_field( wp_unslash( $_GET['dn_coupon'] ) ) ) : ''; ?>"
+						placeholder="<?php esc_attr_e( 'z. B. SOMMER2026', 'dinia' ); ?>">
+				</div>
+
+				<div class="dinia-field">
 					<label for="dinia_password"><?php esc_html_e( 'Passwort *', 'dinia' ); ?></label>
 					<input type="password" id="dinia_password" name="dinia_password"
 						required minlength="8"
@@ -190,7 +204,7 @@ class DINA_Signup {
 
 				<div class="dinia-field dinia-submit-wrap">
 					<button type="submit" name="dinia_register_submit" class="dinia-btn dinia-btn-primary">
-						<?php esc_html_e( 'Kostenlos registrieren', 'dinia' ); ?>
+						<?php esc_html_e( 'Jetzt registrieren – 19,95 € / Monat', 'dinia' ); ?>
 					</button>
 				</div>
 
@@ -444,6 +458,18 @@ class DINA_Signup {
 		$plan_id   = $plan ? (int) $plan->id : null;
 		$plan_name = $plan ? $plan->name : 'Dinia Basic';
 
+		// Coupon auswerten und speichern
+		$coupon_code = isset( $_POST['dinia_coupon'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_POST['dinia_coupon'] ) ) ) : '';
+		$coupon_data = null;
+		if ( ! empty( $coupon_code ) && class_exists( 'DINA_Coupon' ) ) {
+			$coupon_check = ( new DINA_Coupon() )->validate_code( $coupon_code );
+			if ( $coupon_check['success'] ) {
+				$coupon_data = $coupon_check['data'];
+			} else {
+				$coupon_code = ''; // Ungültigen Code weg
+			}
+		}
+
 		// Confirm-Token generieren (32 Byte = 64 Hex-Zeichen)
 		$confirm_token = bin2hex( random_bytes( 32 ) );
 
@@ -459,6 +485,7 @@ class DINA_Signup {
 			'plan_id'       => $plan_id,
 			'status'        => 'pending',
 			'confirm_token' => $confirm_token,
+			'coupon_code'   => $coupon_code,
 			'created_at'    => current_time( 'mysql' ),
 		);
 
@@ -468,7 +495,7 @@ class DINA_Signup {
 		$inserted = $this->wpdb->insert(
 			$this->customers_table,
 			$customer_data,
-			array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s' )
+			array( '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s', '%s', '%s' )
 		);
 
 		if ( false === $inserted ) {
@@ -479,7 +506,7 @@ class DINA_Signup {
 					'dn_email'    => rawurlencode( $email ),
 					'dn_phone'    => rawurlencode( $phone ),
 				),
-				remove_query_arg( array( 'dinia_success', 'dinia_confirmed', 'dinia_confirm' ) )
+				remove_query_arg( array( 'dinia_error', 'dn_company', 'dn_email', 'dn_phone', 'dinia_confirm' ) )
 			);
 			wp_safe_redirect( $redirect );
 			exit;
@@ -514,186 +541,180 @@ class DINA_Signup {
 		// API-Key generieren
 		$api_key_data = $this->customers->generate_api_key( $customer_id );
 
-		// Bestätigungs-Email senden
-		$confirm_url = add_query_arg(
-			array( 'dinia_confirm' => $confirm_token ),
-			trailingslashit( home_url() )
-		);
-
-		$email_sent = $this->send_confirmation_email( $email, $company, $confirm_url );
-
-		if ( ! $email_sent ) {
-			// Email-Fehler loggen
-			error_log( 'DINA Signup: Confirmation email failed to send to ' . $email );
+		// Willkommens-Email mit Login-Info senden
+		if ( ! empty( $wp_user_id ) && ! is_wp_error( $wp_user_id ) ) {
+			$this->send_welcome_email( $email, $company, $username );
 		}
 
-		// Erfolg: Weiterleitung zur Success-Seite
-		$redirect = add_query_arg(
-			array( 'dinia_success' => '1' ),
-			remove_query_arg( array( 'dinia_error', 'dn_company', 'dn_email', 'dn_phone', 'dinia_confirm' ) )
+		// Weiterleitung zur Zahlungs-Seite
+		$pay_url = add_query_arg(
+			array(
+				'dinia_pay' => '1',
+				'id'        => $customer_id,
+				'token'     => $confirm_token,
+			),
+			trailingslashit( home_url() )
 		);
-		wp_safe_redirect( $redirect );
+		wp_safe_redirect( esc_url_raw( $pay_url ) );
 		exit;
 	}
 
 	/**
-	 * Verarbeitet den Bestätigungs-Link.
+	 * Verarbeitet den Bestätigungs-Link (von Mollie-Redirect nach Zahlung).
 	 *
-	 * Setzt Kunde auf 'active', erzeugt Mollie-Kunde und First Payment,
-	 * leitet zur Mollie-Checkout-Seite weiter.
-	 *
-	 * @param string $token Der Confirm-Token aus der URL.
+	 * Zeigt die Erfolgsseite. Die Aktivierung erfolgt async via Webhook.
 	 */
-	public function handle_confirmation( $token ) {
-		// Kunde anhand des Tokens suchen
+	public function handle_confirmation() {
+		// Einfach Erfolgsseite anzeigen – Webhook aktiviert den Kunden
+		$this->render_confirmed_page();
+		exit;
+	}
+
+	/**
+	 * Zeigt die Zahlungs-Seite und verarbeitet den Klick auf "Jetzt bezahlen".
+	 *
+	 * @param int    $customer_id Kunden-ID.
+	 * @param string $token       Confirm-Token zur Authentifizierung.
+	 */
+	public function handle_payment_action( $customer_id, $token ) {
+		// Kunde anhand ID + Token prüfen
 		$customer = $this->wpdb->get_row(
 			$this->wpdb->prepare(
-				"SELECT * FROM {$this->customers_table} WHERE confirm_token = %s AND status = 'pending' LIMIT 1",
+				"SELECT * FROM {$this->customers_table} WHERE id = %d AND confirm_token = %s AND status = 'pending' LIMIT 1",
+				$customer_id,
 				$token
 			)
 		);
 
 		if ( ! $customer ) {
-			// Token ungültig oder bereits bestätigt
-			wp_die(
-				esc_html__( 'Dieser Bestätigungs-Link ist ungültig oder wurde bereits verwendet.', 'dinia' ),
-				esc_html__( 'Ungültiger Link', 'dinia' ),
-				array( 'response' => 404 )
-			);
+			wp_die( 'Ungültiger Link oder bereits bezahlt.', 'Fehler', array( 'response' => 404 ) );
 		}
 
-		// Plan-Info holen
-		$plan = $this->plans->get_by_id( (int) $customer->plan_id );
-		$price = 0.00;
-		if ( $plan && isset( $plan->price_monthly ) ) {
-			$price = (float) $plan->price_monthly;
-		}
+		$plan       = $this->plans->get_by_id( (int) $customer->plan_id );
+		$base_price = ( $plan && isset( $plan->price_monthly ) ) ? (float) $plan->price_monthly : 19.95;
 
-		// Mollie-Kunden-ID besorgen oder neuen Mollie-Kunden anlegen
-		$mollie_customer_id = '';
-		if ( class_exists( 'DINA_Mollie' ) ) {
-			$mollie   = new DINA_Mollie();
-			$api_key  = $mollie->get_api_key();
-			if ( ! empty( $api_key ) ) {
-				$mollie_customer_result = $mollie->create_customer( $customer->company, $customer->email );
-				if ( $mollie_customer_result['success'] ) {
-					$mollie_customer_id = $mollie_customer_result['customer_id'];
-				} else {
-					error_log( 'DINA Signup: Mollie customer creation failed: ' . ( $mollie_customer_result['error'] ?? 'unknown' ) );
-				}
+		// Coupon-Rabatt berechnen
+		$price       = $base_price;
+		$coupon_info = '';
+		if ( ! empty( $customer->coupon_code ) && class_exists( 'DINA_Coupon' ) ) {
+			$coupon      = new DINA_Coupon();
+			$discount    = $coupon->apply_discount( $customer->coupon_code, $base_price );
+			if ( $discount['success'] ) {
+				$price = $discount['price'];
+				$coupon_info = sprintf( ' (Rabatt: %s)', $customer->coupon_code );
 			}
 		}
 
-		// Kunde aktivieren: status='active', confirm_token leeren, Mollie-Customer-ID speichern
-		$update_data = array(
-			'status'        => 'active',
-			'confirm_token' => '',
-		);
-		$update_types = array( '%s', '%s' );
-
-		if ( ! empty( $mollie_customer_id ) ) {
-			$update_data['mollie_customer_id'] = $mollie_customer_id;
-			$update_types[] = '%s';
-		}
-
-		$this->wpdb->update(
-			$this->customers_table,
-			$update_data,
-			array( 'id' => (int) $customer->id ),
-			$update_types,
-			array( '%d' )
-		);
-
-		// Weiterleitung zu Mollie-Zahlung
-		if ( ! empty( $mollie_customer_id ) && $price > 0 && class_exists( 'DINA_Mollie' ) ) {
-			$mollie        = new DINA_Mollie();
-			$webhook_url   = rest_url( 'dinia/v1/webhook/mollie' );
-			$redirect_url  = add_query_arg(
-				array( 'dinia_confirmed' => '1' ),
-				trailingslashit( home_url() )
-			);
-			$plan_label    = $plan ? $plan->name : 'Dinia Basic';
-			$description   = sprintf(
-				/* translators: %1$s: Plan-Name, %2$s: Firmenname */
-				__( '%1$s – %2$s', 'dinia' ),
-				$plan_label,
-				$customer->company
-			);
-
-			$payment_result = $mollie->create_first_payment(
-				$mollie_customer_id,
-				$price,
-				$description,
-				$webhook_url,
-				$redirect_url
-			);
-
-			if ( $payment_result['success'] && ! empty( $payment_result['checkout_url'] ) ) {
-				// Rechnung anlegen
-				if ( class_exists( 'DINA_Invoices' ) ) {
-					$invoices = new DINA_Invoices();
-					$invoices->create( array(
-						'customer_id'      => (int) $customer->id,
-						'mollie_payment_id' => $payment_result['payment_id'],
-						'amount'           => $price,
-						'currency'         => 'EUR',
-						'status'           => 'pending',
-						'description'      => $description,
-					) );
+		// POST: Jetzt bezahlen Button wurde geklickt
+		if ( isset( $_POST['dinia_do_payment'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_pay_nonce' ) ) {
+			// Mollie-Kunde anlegen
+			$mollie_customer_id = '';
+			if ( class_exists( 'DINA_Mollie' ) ) {
+				$mollie  = new DINA_Mollie();
+				$api_key = $mollie->get_api_key();
+				if ( ! empty( $api_key ) ) {
+					$mollie_result = $mollie->create_customer( $customer->company, $customer->email );
+					if ( $mollie_result['success'] ) {
+						$mollie_customer_id = $mollie_result['customer_id'];
+						$this->wpdb->update(
+							$this->customers_table,
+							array( 'mollie_customer_id' => $mollie_customer_id ),
+							array( 'id' => $customer_id )
+						);
+					}
 				}
-
-				wp_redirect( esc_url_raw( $payment_result['checkout_url'] ) );
-				exit;
-			} else {
-				// Mollie-Zahlung fehlgeschlagen – trotzdem zur Erfolgsseite
-				error_log( 'DINA Signup: First payment creation failed: ' . ( $payment_result['error'] ?? 'unknown' ) );
 			}
+
+			if ( ! empty( $mollie_customer_id ) && $price > 0 ) {
+				// First Payment bei Mollie erstellen
+				$payment = $mollie->create_first_payment(
+					$mollie_customer_id,
+					$price,
+					sprintf( '%s – %s', $plan ? $plan->name : 'Dinia Basic', $customer->company ),
+					rest_url( 'dinia/v1/webhook/mollie' ),
+					add_query_arg( array( 'dinia_confirmed' => '1' ), trailingslashit( home_url() ) )
+				);
+
+				if ( $payment['success'] && ! empty( $payment['checkout_url'] ) ) {
+					// Coupon Usage increment
+					if ( ! empty( $customer->coupon_code ) && class_exists( 'DINA_Coupon' ) ) {
+						( new DINA_Coupon() )->increment_usage( $customer->coupon_code );
+					}
+
+					// Rechnung anlegen
+					if ( class_exists( 'DINA_Invoices' ) ) {
+						$invoices = new DINA_Invoices();
+						$invoices->create( array(
+							'customer_id'       => (int) $customer->id,
+							'mollie_payment_id' => $payment['payment_id'],
+							'amount'            => $price,
+							'currency'          => 'EUR',
+							'status'            => 'pending',
+							'description'       => sprintf( '%s – %s', $plan ? $plan->name : 'Dinia Basic', $customer->company ),
+						) );
+					}
+
+					wp_redirect( esc_url_raw( $payment['checkout_url'] ) );
+					exit;
+				}
+			}
+
+			// Fallback: Trotzdem Erfolgsseite zeigen
+			$this->render_confirmed_page();
+			exit;
 		}
 
-		// Fallback: Wenn kein Preis oder Mollie nicht verfügbar, direkt zur Bestätigungsseite
-		$redirect = add_query_arg(
-			array( 'dinia_confirmed' => '1' ),
-			trailingslashit( home_url() )
-		);
-		wp_safe_redirect( $redirect );
+		// Anzeige: Zahlungs-Seite mit Button
+		$login_url = wp_login_url( admin_url( 'admin.php?page=dinia-my-account' ) );
+		$price_fmt = number_format( $price, 2, ',', '.' );
+
+		?>
+		<div style="max-width:520px;margin:2rem auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+			<div style="background:#fff;border:1px solid #ddd;border-radius:8px;padding:2rem;box-shadow:0 2px 8px rgba(0,0,0,0.06);text-align:center;">
+				<h2 style="margin-top:0;">Fast geschafft! 🎉</h2>
+				<p style="color:#666;">Bitte schließen Sie die Zahlung ab, um Ihren Account zu aktivieren.</p>
+
+				<table style="width:100%;border-collapse:collapse;margin:1.5rem auto;max-width:320px;text-align:left;">
+					<tr><td style="padding:8px;font-weight:600;">Restaurant</td><td><?php echo esc_html( $customer->company ); ?></td></tr>
+					<tr><td style="padding:8px;font-weight:600;">Plan</td><td><?php echo esc_html( $plan ? $plan->name : 'Dinia Basic' ); ?></td></tr>
+					<tr><td style="padding:8px;font-weight:600;">Betrag</td><td><strong style="font-size:1.3rem;color:#1a1a1a;"><?php echo esc_html( $price_fmt ); ?> €</strong><?php echo esc_html( $coupon_info ); ?> / Monat</td></tr>
+				</table>
+
+				<form method="post">
+					<?php wp_nonce_field( 'dinia_pay_nonce' ); ?>
+					<button type="submit" name="dinia_do_payment" style="background:#4a90d9;color:#fff;border:none;padding:14px 40px;border-radius:6px;font-size:1.1rem;font-weight:600;cursor:pointer;">
+						Jetzt bezahlen – <?php echo esc_html( $price_fmt ); ?> €
+					</button>
+				</form>
+
+				<p style="color:#999;font-size:0.85rem;margin-top:1rem;">Nach der Zahlung erhalten Sie eine Bestätigungs-E-Mail mit Ihren Login-Daten.</p>
+			</div>
+		</div>
+		<?php
 		exit;
 	}
 
 	/**
-	 * Bestätigungsnachricht nach erfolgreicher Registrierung.
-	 *
-	 * @return string HTML.
+	 * Zeigt die Erfolgsseite nach erfolgreicher Zahlung.
 	 */
-	public function render_success() {
-		ob_start();
+	public function render_confirmed_page() {
+		$login_url = wp_login_url( admin_url( 'admin.php?page=dinia-my-account' ) );
 		?>
-		<div class="dinia-signup-success">
-			<h3><?php esc_html_e( 'Fast geschafft! 📧', 'dinia' ); ?></h3>
-			<p><?php esc_html_e( 'Vielen Dank für Ihre Registrierung!', 'dinia' ); ?></p>
-			<p><?php esc_html_e( 'Wir haben Ihnen eine Bestätigungs-E-Mail gesendet. Bitte klicken Sie auf den Link in der E-Mail, um Ihren Account zu aktivieren und die Einrichtung abzuschließen.', 'dinia' ); ?></p>
-			<p><strong><?php esc_html_e( 'Keine E-Mail erhalten?', 'dinia' ); ?></strong><br>
-			<?php esc_html_e( 'Bitte überprüfen Sie auch Ihren Spam-Ordner. Falls Sie keine E-Mail finden, kontaktieren Sie uns bitte.', 'dinia' ); ?></p>
+		<div style="max-width:520px;margin:2rem auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+			<div style="background:#d4edda;border:1px solid #c3e6cb;border-radius:8px;padding:2rem;text-align:center;color:#155724;">
+				<h2 style="margin-top:0;">🎉 Zahlung erfolgreich!</h2>
+				<p>Ihr Restaurant-Account wurde eingerichtet.</p>
+				<p><strong>So geht's weiter:</strong></p>
+				<p style="margin:1rem 0;">
+					<a href="<?php echo esc_url( $login_url ); ?>" style="display:inline-block;background:#28a745;color:#fff;padding:12px 30px;border-radius:6px;text-decoration:none;font-weight:600;">
+						🔑 Jetzt einloggen & loslegen
+					</a>
+				</p>
+				<p style="font-size:0.9rem;">Login-Bereich: <strong><?php echo esc_html( $login_url ); ?></strong></p>
+				<p style="font-size:0.85rem;color:#666;">Sie haben zusätzlich eine E-Mail mit Ihren Login-Daten erhalten.</p>
+			</div>
 		</div>
 		<?php
-		return ob_get_clean();
-	}
-
-	/**
-	 * Erfolgsnachricht nach erfolgreicher Bestätigung.
-	 *
-	 * @return string HTML.
-	 */
-	public function render_confirmed() {
-		ob_start();
-		?>
-		<div class="dinia-signup-confirmed">
-			<h3><?php esc_html_e( 'Account bestätigt! ✅', 'dinia' ); ?></h3>
-			<p><?php esc_html_e( 'Ihr Restaurant-Account wurde erfolgreich aktiviert.', 'dinia' ); ?></p>
-			<p><?php esc_html_e( 'Sie werden nun zur Zahlungsseite weitergeleitet, um Ihren Plan einzurichten.', 'dinia' ); ?></p>
-			<p><?php esc_html_e( 'Falls Sie nicht weitergeleitet wurden, können Sie sich in Ihrem Account anmelden und die Zahlung manuell durchführen.', 'dinia' ); ?></p>
-		</div>
-		<?php
-		return ob_get_clean();
 	}
 
 	/**
@@ -978,5 +999,43 @@ class DINA_Signup {
 			}
 			$suffix++;
 		}
+	}
+
+	/**
+	 * Sendet eine Willkommens-Email mit Login-Link nach erfolgreicher Zahlung.
+	 *
+	 * @since 1.1.7
+	 *
+	 * @param string $email    Empfänger-E-Mail.
+	 * @param string $company  Firmenname.
+	 * @param string $username WP-Username.
+	 *
+	 * @return bool
+	 */
+	public function send_welcome_email( $email, $company, $username ) {
+		$login_url = wp_login_url( admin_url( 'admin.php?page=dinia-my-account' ) );
+		$subject   = sprintf( __( 'Willkommen bei Dinia – %s', 'dinia' ), $company );
+
+		$html  = '<h2>🎉 Willkommen bei Dinia!</h2>';
+		$html .= '<p>Hallo <strong>' . esc_html( $company ) . '</strong>,</p>';
+		$html .= '<p>Ihre Zahlung war erfolgreich! Ihr Restaurant-Account ist jetzt aktiv.</p>';
+		$html .= '<p><strong>So geht\'s weiter:</strong></p>';
+		$html .= '<p>👉 <a href="' . esc_url( $login_url ) . '" style="background:#28a745;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;display:inline-block;">Jetzt einloggen & loslegen</a></p>';
+		$html .= '<p><strong>Login-Bereich:</strong><br>' . esc_html( $login_url ) . '</p>';
+		$html .= '<p>Dort können Sie:<br>';
+		$html .= '• Ihr Restaurant-Profil einrichten<br>';
+		$html .= '• Tische und Öffnungszeiten verwalten<br>';
+		$html .= '• Den Buchungs-Widget auf Ihrer Seite einbinden<br>';
+		$html .= '• Reservierungen einsehen und verwalten</p>';
+		$html .= '<p>Viel Erfolg mit Dinia!</p>';
+
+		$html_body = DINA_Mailer::build_html( $subject, $html, $company );
+
+		return DINA_Mailer::send(
+			$email,
+			$subject,
+			'Willkommen bei Dinia – Ihr Account ist aktiv',
+			$html_body
+		);
 	}
 }
