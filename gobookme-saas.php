@@ -37,6 +37,14 @@ require_once DINIA_PLUGIN_DIR . 'includes/class-coupon.php';
 // WP Cron Hook for reminder emails
 add_action( 'dinia_reminder_event', array( 'DINA_Booking', 'send_reminder_email' ) );
 
+// Shortcode-Rendering in FSE-Block-Themes erzwingen (do_blocks frisst Shortcodes)
+add_filter( 'the_content', function ( $content ) {
+	if ( has_shortcode( $content, 'dinia_register' ) || has_shortcode( $content, 'dinia_account' ) ) {
+		return do_shortcode( $content );
+	}
+	return $content;
+}, 0 );
+
 // Bootstrap
 new DINA_REST_API();
 new DINA_Admin();
