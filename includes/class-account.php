@@ -607,10 +607,20 @@ API-Key: <?php echo esc_html( $customer->api_key_hint ?: 'Nach Generierung oben 
 <script src="' . esc_url( home_url( '/wp-json/dinia/v1/widget/' . $customer->slug . '/embed.js' ) ) . '"></script>';
 				?>
 				<div class="dinia-code-block" onclick="navigator.clipboard.writeText(this.textContent.trim())"><?php echo esc_html( $embed_code ); ?></div>
-				<p style="color:#666;font-size:0.85rem;">📋 Klick auf den Block = Kopieren</p>
+				<p style="color:#666;font-size:0.85rem;">Fügen Sie diesen Code kurz vor dem schließenden <code>&lt;/body&gt;</code>-Tag ein.</p>
 
-				<h3 style="margin:20px 0 8px;">📘 Anleitung (PDF)</h3>
-				<p><a href="https://gomeetme.com/gobookme-doc.md" target="_blank">📄 Online-Dokumentation</a></p>
+				<h3 style="margin:20px 0 8px;">📘 Anleitung als PDF</h3>
+				<p><a href="<?php echo esc_url( plugin_dir_url( dirname( __FILE__ ) ) . 'assets/dinia-anleitung.pdf' ); ?>" target="_blank" class="dinia-btn-primary-s dinia-btn-s" style="text-decoration:none;">⬇️ Anleitung herunterladen (PDF)</a></p>
+				<p style="color:#666;font-size:0.85rem;">Verständliche Schritt-für-Schritt-Anleitung für Restaurantbetreiber.</p>
+
+				<h3 style="margin:20px 0 8px;">📅 Kalender-Apps (CalDAV-kompatibel)</h3>
+				<p>Sehen Sie Ihre Buchungen auf dem Handy oder PC – mit der kostenlosen App <strong>OneCalendar</strong>:</p>
+				<ul style="margin:8px 0 8px 20px;">
+					<li><strong>Windows:</strong> <a href="https://www.microsoft.com/store/apps/9wzdncrdr0sf" target="_blank">Microsoft Store</a></li>
+					<li><strong>iPhone/iPad:</strong> <a href="https://apps.apple.com/app/id1238379385" target="_blank">App Store</a></li>
+					<li><strong>Android:</strong> <a href="https://play.google.com/store/apps/details?id=biz.codespark.xcalendarapp" target="_blank">Google Play</a></li>
+				</ul>
+				<p style="color:#666;font-size:0.85rem;">Richten Sie einfach Ihren CalDAV-Kalender aus den <strong>Einstellungen</strong> ein, dann sehen Sie alle Buchungen in der App.</p>
 			</div>
 
 			<!-- TAB: Abo -->
