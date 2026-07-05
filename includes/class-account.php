@@ -53,6 +53,14 @@ class DINA_Account {
 		if ( 'toplevel_page_dinia-my-account' !== $hook ) {
 			return;
 		}
+		// FullCalendar
+		wp_enqueue_script( 'fullcalendar', DINIA_PLUGIN_URL . 'assets/fullcalendar.min.js', array(), DINIA_VERSION, true );
+		wp_enqueue_script( 'fullcalendar-de', DINIA_PLUGIN_URL . 'assets/fullcalendar-de.min.js', array( 'fullcalendar' ), DINIA_VERSION, true );
+		wp_enqueue_script( 'dinia-calendar', DINIA_PLUGIN_URL . 'assets/calendar.js', array( 'fullcalendar', 'fullcalendar-de' ), DINIA_VERSION, true );
+		wp_localize_script( 'dinia-calendar', 'diniaCalendar', array(
+			'rest_url' => get_rest_url() . 'dinia/v1/tenant/events',
+			'nonce'    => wp_create_nonce( 'wp_rest' ),
+		) );
 		?>
 		<style>
 			.dinia-acc-wrap { max-width:900px; margin:20px 0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
@@ -89,6 +97,12 @@ class DINA_Account {
 			.dinia-acc-tab:hover:not(.active) { background:#eee; }
 			.dinia-acc-notice { background:#fff3e6; border-left:4px solid #ff6b00; padding:12px 16px; margin-bottom:16px; border-radius:0 4px 4px 0; font-size:0.9rem; }
 			@media (max-width:600px) { .dinia-hours-grid { grid-template-columns:1fr; } .dinia-acc-row { flex-direction:column; align-items:stretch; } .dinia-acc-row label { min-width:auto; } }
+			/* FullCalendar-Anpassungen */
+			#dinia-calendar { margin-top:8px; }
+			#dinia-calendar .fc-toolbar-title { font-size:1.2rem; }
+			#dinia-calendar .fc-button { font-size:0.82rem; padding:4px 10px; }
+			#dinia-calendar .fc-daygrid-event { font-size:0.78rem; padding:1px 4px; border-radius:3px; cursor:pointer; }
+			#dinia-calendar .fc-timegrid-event { font-size:0.78rem; padding:2px 4px; border-radius:3px; }
 		</style>
 		<?php
 	}
@@ -395,6 +409,7 @@ class DINA_Account {
 				<div class="dinia-acc-tab" data-tab="hours">🕐 Öffnungszeiten</div>
 				<div class="dinia-acc-tab" data-tab="tables">🪑 Tische</div>
 				<div class="dinia-acc-tab" data-tab="bookings">📋 Buchungen</div>
+				<div class="dinia-acc-tab" data-tab="calendar">📅 Kalender</div>
 				<div class="dinia-acc-tab" data-tab="embed">🔗 Einbindung</div>
 				<div class="dinia-acc-tab" data-tab="account">👤 Abo</div>
 			</div>
@@ -728,6 +743,12 @@ class DINA_Account {
 						<button type="submit" class="dinia-btn-primary-s dinia-btn-s">Buchung erstellen</button>
 					</div>
 				</form>
+			</div>
+
+			<!-- TAB: Kalender -->
+			<div class="dinia-acc-card dinia-tab-content" id="tab-calendar" style="display:none;">
+				<h2>📅 Kalender</h2>
+				<div id="dinia-calendar" style="max-width:100%;"></div>
 			</div>
 
 			<!-- TAB: Embed / Einbindung -->

@@ -99,6 +99,7 @@ class DINA_REST_API {
 		$this->register_admin_routes();
 		$this->register_webhook_routes();
 		$this->register_backup_routes();
+		$this->register_tenant_routes();
 	}
 
 	/**
@@ -1618,5 +1619,120 @@ class DINA_REST_API {
 			return new WP_Error( 'booking_failed', $result->get_error_message(), array( 'status' => 500 ) );
 		}
 		return rest_ensure_response( array( 'success' => true, 'reservation_id' => $result ) );
+	}
+
+	/**
+	 * ---------------------------------------------------------------
+	 *  TENANT-ROUTEN (eingeloggt, eigenes Konto)
+	 * ---------------------------------------------------------------
+	 */
+
+	/**
+	 * Registriert die Tenant-Endpunkte für den Kundenbereich.
+	 *
+	 * @since 1.3.0
+	 * @return void
+	 */
+	private function register_tenant_routes() {
+		// GET /dinia/v1/tenant/events?start=2026-01-01&end=2026-02-01
+		register_rest_route(
+			$this->namespace,
+			'/tenant/events',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'tenant_events' ),
+				'permission_callback' => 'is_user_logged_in',
+				'args'                => array(
+					'start' => array(
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'end'   => array(
+						'required'          => true,
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Gibt alle Buchungen des eingeloggten Tenants als FullCalendar-Events zurück.
+	 *
+	 * @param WP_REST_Request $request Die Anfrage.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function tenant_events( $request ) {
+		global $wpdb;
+
+		$current_user = wp_get_current_user();
+		if ( ! $current_user || ! $current_user->user_email ) {
+			return new WP_Error( 'no_user', 'Nicht eingeloggt.', array( 'status' => 401 ) );
+		}
+
+		$customer = $wpdb->get_row( $wpdb->prepare(
+			"SELECT id, slug FROM {$wpdb->prefix}dinia_customers WHERE email = %s LIMIT 1",
+			$current_user->user_email
+		) );
+		if ( ! $customer ) {
+			return new WP_Error( 'no_customer', 'Kein Dinia-Konto gefunden.', array( 'status' => 404 ) );
+		}
+
+		$start = sanitize_text_field( $request->get_param( 'start' ) );
+		$end   = sanitize_text_field( $request->get_param( 'end' ) );
+
+		$bookings = $wpdb->get_results( $wpdb->prepare(
+			"SELECT r.id, r.date, r.time_start, r.time_end, r.guest_name, r.guest_count,
+			        r.guest_email, r.guest_phone, r.notes, r.status, t.name AS table_name
+			 FROM {$wpdb->prefix}dinia_reservations r
+			 LEFT JOIN {$wpdb->prefix}dinia_tables t ON r.table_id = t.id
+			 WHERE r.customer_id = %d
+			   AND r.date >= %s AND r.date < %s
+			   AND r.status != 'cancelled'
+			 ORDER BY r.date ASC, r.time_start ASC",
+			(int) $customer->id,
+			$start,
+			$end
+		) );
+
+		$events = array();
+		foreach ( $bookings as $b ) {
+			$title  = $b->guest_name;
+			if ( $b->guest_count ) {
+				$title .= ' (' . (int) $b->guest_count . ' Pers.)';
+			}
+
+			$description = '';
+			if ( $b->guest_email )     $description .= 'E-Mail: ' . $b->guest_email . "\n";
+			if ( $b->guest_phone )     $description .= 'Tel: ' . $b->guest_phone . "\n";
+			if ( $b->table_name )      $description .= 'Tisch: ' . $b->table_name . "\n";
+			if ( $b->notes )           $description .= 'Notiz: ' . $b->notes . "\n";
+
+			$start_dt = $b->date . 'T' . ( $b->time_start ?: '00:00' );
+			$end_dt   = $b->date . 'T' . ( $b->time_end ?: '23:59' );
+
+			$color = ( $b->status === 'confirmed' ) ? '#ff6b00' : '#999';
+
+			$events[] = array(
+				'id'          => 'dinia-' . $b->id,
+				'title'       => $title,
+				'start'       => $start_dt,
+				'end'         => $end_dt,
+				'description' => trim( $description ),
+				'backgroundColor' => $color,
+				'borderColor'     => $color,
+				'textColor'       => '#fff',
+				'extendedProps'   => array(
+					'guest_email' => $b->guest_email,
+					'guest_phone' => $b->guest_phone,
+					'guest_count' => $b->guest_count,
+					'table_name'  => $b->table_name,
+					'notes'       => $b->notes,
+					'status'      => $b->status,
+				),
+			);
+		}
+
+		return rest_ensure_response( $events );
 	}
 }
