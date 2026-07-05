@@ -40,9 +40,9 @@ class DINA_CalDAV {
             ),
             'google' => array(
                 'name'     => 'Google Calendar',
-                'url'      => 'https://apidata.googleusercontent.com/caldav/v2',
+                'url'      => 'https://www.google.com/calendar/dav/name%40gmail.com/',
                 'username' => 'name@gmail.com',
-                'calendar' => 'default',
+                'calendar' => 'events',
                 'hint'     => 'Benutzername = Gmail-Adresse. Passwort = APP-PASSWORT (myaccount.google.com/apppasswords) – nicht das Google-Passwort!',
             ),
             'gmx' => array(

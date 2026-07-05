@@ -784,10 +784,10 @@ API-Key: <?php echo esc_html( $customer->api_key_hint ?: 'Nach Generierung oben 
 					<li>In den <strong>⚙️ Einstellungen → CalDAV-Kalender</strong>:</li>
 				</ol>
 				<div class="dinia-code-block">Anbieter:  Google Calendar
-URL:       https://apidata.googleusercontent.com/caldav/v2
+URL:       https://www.google.com/calendar/dav/ihre%40emailadresse.com/
 Benutzer:  Ihre Gmail-Adresse (z.B. advocube@gmail.com)
 Passwort:  Das 16-stellige App-Passwort (KEIN Google-Passwort!)
-Kalender:  default</div>
+Kalender:  events</div>
 				<p style="color:#dc3545;font-size:0.85rem;">⚠️ App-Passwort muss nur 1x erstellt werden. Google zeigt es nur einmal an.</p>
 
 				<h4 style="margin:16px 0 6px;">🔵 Infomaniak</h4>
@@ -859,7 +859,7 @@ Kalender:  default</div>
 		});
 		var caldavPresets = {
 			'infomaniak': { url: 'https://sync.infomaniak.com/calendars/GO01132/', username: 'GO01132', calendar: 'default' },
-			'google':     { url: 'https://apidata.googleusercontent.com/caldav/v2', username: '', calendar: 'default' },
+			'google':     { url: 'https://www.google.com/calendar/dav/name%40gmail.com/', username: 'name@gmail.com', calendar: 'events' },
 			'gmx':        { url: 'https://caldav.gmx.net', username: '', calendar: 'default' },
 			'webde':      { url: 'https://caldav.web.de', username: '', calendar: 'default' },
 			'icloud':     { url: 'https://caldav.icloud.com/', username: '', calendar: 'default' },
