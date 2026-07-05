@@ -1047,7 +1047,7 @@ class DINA_REST_API {
 	 * @return array Slots oder Dummy-Daten.
 	 */
 	private function proxy_slots( $date = null, $party_size = null ) {
-		// DINA_Booking (Multi-Tenant) bevorzugen.
+		// DINA_Booking (Multi-Tenant) bevorzugen – VOLLE Logik inkl. Tisch-Kombinierung.
 		if ( class_exists( 'DINA_Booking' ) && method_exists( 'DINA_Booking', 'get_time_slots' ) ) {
 			try {
 				$slots = DINA_Booking::get_time_slots( $date );
@@ -1059,27 +1059,76 @@ class DINA_REST_API {
 
 					foreach ( $slots as $slot ) {
 						$reserved = DINA_Booking::get_reservations_for_slot( $date, $slot['start'], $slot['end'], $customer_id );
-						$taken_ids = array_map( 'intval', wp_list_pluck( $reserved, 'table_id' ) );
+						// Alle belegten Tisch-IDs sammeln (inkl. kombinierte table_ids)
+						$taken_ids = [];
+						foreach ( $reserved as $r ) {
+							$taken_ids[] = (int) $r->table_id;
+							if ( ! empty( $r->table_ids ) ) {
+								foreach ( explode( ',', $r->table_ids ) as $tid ) {
+									$taken_ids[] = (int) $tid;
+								}
+							}
+						}
+						$taken_ids = array_unique( $taken_ids );
 
-												$best_table = null;
-												foreach ( $tables as $t ) {
-													if ( $t->seats >= $party && ! in_array( (int) $t->id, $taken_ids ) ) {
-														$available  = true;
-														$best_table = $t;
-														break;
-													}
-												}
+						// 1) Einzeltisch mit ausreichend Plätzen
+						$assigned_table = null;
+						foreach ( $tables as $t ) {
+							if ( $t->seats >= $party && ! in_array( (int) $t->id, $taken_ids ) ) {
+								$assigned_table = $t;
+								break;
+							}
+						}
 
-												$result[] = [
-													'time'        => $slot['start'],
-													'time_end'    => $slot['end'],
-													'date'        => $date,
-													'available'   => $available,
-													'party_size'  => $party,
-													'table_id'    => $best_table ? (int) $best_table->id : 0,
-													'table_name'  => $best_table ? $best_table->name : '',
-													'table_seats' => $best_table ? (int) $best_table->seats : 0,
-												];
+						if ( $assigned_table ) {
+							$result[] = [
+								'time'        => $slot['start'],
+								'time_end'    => $slot['end'],
+								'date'        => $date,
+								'available'   => true,
+								'party_size'  => $party,
+								'table_id'    => (int) $assigned_table->id,
+								'table_ids'   => (string) $assigned_table->id,
+								'table_name'  => $assigned_table->name,
+								'table_seats' => (int) $assigned_table->seats,
+								'combined'    => false,
+							];
+							continue;
+						}
+
+						// 2) Kombinierbare Tische versuchen
+						$available_combinable = [];
+						foreach ( $tables as $t ) {
+							if ( ! empty( $t->combinable ) && ! in_array( (int) $t->id, $taken_ids ) ) {
+								$available_combinable[] = $t;
+							}
+						}
+
+						if ( count( $available_combinable ) >= 2 ) {
+							$combo = DINA_Booking::find_combination( $available_combinable, $party );
+							if ( null !== $combo ) {
+								$ids   = [];
+								$names = [];
+								$total_seats = 0;
+								foreach ( $combo as $ct ) {
+									$ids[]   = (int) $ct->id;
+									$names[] = $ct->name;
+									$total_seats += (int) $ct->seats;
+								}
+								$result[] = [
+									'time'        => $slot['start'],
+									'time_end'    => $slot['end'],
+									'date'        => $date,
+									'available'   => true,
+									'party_size'  => $party,
+									'table_id'    => $ids[0],
+									'table_ids'   => implode( ',', $ids ),
+									'table_name'  => implode( ' + ', $names ),
+									'table_seats' => $total_seats,
+									'combined'    => true,
+								];
+							}
+						}
 					}
 
 					if ( ! empty( $result ) ) {

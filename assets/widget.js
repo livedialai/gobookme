@@ -307,6 +307,7 @@
           card.setAttribute('data-start', s.time);
           card.setAttribute('data-end', s.time_end || '');
           card.setAttribute('data-table-id', s.table_id || '');
+          card.setAttribute('data-table-ids', s.table_ids || s.table_id || '');
           card.setAttribute('data-table-name', s.table_name || 'Tisch');
           card.setAttribute('data-seats', s.table_seats || s.party_size || state.party_size);
 
@@ -367,7 +368,9 @@
         guest_name: state.name,
         guest_email: state.email,
         guest_phone: state.phone,
-        notes: state.notes
+        notes: state.notes,
+        table_id: state.selected_slot.table_id,
+        table_ids: state.selected_slot.table_ids
       })
     })
     .then(function (r) { return r.json(); })
