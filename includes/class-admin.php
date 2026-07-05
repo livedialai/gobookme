@@ -901,6 +901,93 @@ class DINA_Admin {
 				exit;
 			}
 		}
+
+		// ─── RESTAURANT: Öffnungszeiten speichern ───
+		if ( isset( $_POST['dinia_save_hours'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_rest_hours_nonce' ) ) {
+			$customer_id = isset( $_POST['rest_customer_id'] ) ? (int) $_POST['rest_customer_id'] : 0;
+			if ( $customer_id > 0 && isset( $_POST['hours'] ) && is_array( $_POST['hours'] ) ) {
+				$table = $this->prefix . 'dinia_hours';
+				$day_keys = array( 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' );
+				foreach ( $day_keys as $key ) {
+					$h = isset( $_POST['hours'][ $key ] ) ? $_POST['hours'][ $key ] : array();
+					$data = array(
+						'customer_id' => $customer_id,
+						'day_key'     => $key,
+						'open'        => sanitize_text_field( $h['open'] ?? '11:00' ),
+						'close'       => sanitize_text_field( $h['close'] ?? '22:00' ),
+						'open2'       => sanitize_text_field( $h['open2'] ?? '' ),
+						'close2'      => sanitize_text_field( $h['close2'] ?? '' ),
+						'closed'      => isset( $h['closed'] ) ? 1 : 0,
+					);
+					$exists = $this->wpdb->get_var( $this->wpdb->prepare(
+						"SELECT id FROM {$table} WHERE customer_id = %d AND day_key = %s LIMIT 1",
+						$customer_id, $key
+					) );
+					if ( $exists ) {
+						$this->wpdb->update( $table, $data, array( 'customer_id' => $customer_id, 'day_key' => $key ) );
+					} else {
+						$this->wpdb->insert( $table, $data );
+					}
+				}
+			}
+			wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-rest-hours', 'rest_customer_id' => $customer_id, 'hours_saved' => '1' ), admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		// ─── RESTAURANT: Einstellungen speichern (JSON in dinia_customers.settings) ───
+		if ( isset( $_POST['dinia_save_rest_settings'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_rest_settings_nonce' ) ) {
+			$customer_id = isset( $_POST['rest_customer_id'] ) ? (int) $_POST['rest_customer_id'] : 0;
+			if ( $customer_id > 0 ) {
+				$settings = array(
+					'restaurant_name'   => sanitize_text_field( $_POST['restaurant_name'] ?? '' ),
+					'slot_duration'     => min( 180, max( 30, (int) ( $_POST['slot_duration'] ?? 120 ) ) ),
+					'slot_interval'     => in_array( (int) ( $_POST['slot_interval'] ?? 30 ), array( 15, 30, 60 ) ) ? (int) $_POST['slot_interval'] : 30,
+					'min_advance_hours' => min( 48, max( 1, (int) ( $_POST['min_advance_hours'] ?? 2 ) ) ),
+					'max_advance_days'  => min( 90, max( 1, (int) ( $_POST['max_advance_days'] ?? 30 ) ) ),
+					'primary_color'     => sanitize_hex_color( $_POST['primary_color'] ?? '#ff6b00' ),
+					'email_confirm'     => isset( $_POST['email_confirm'] ) ? 1 : 0,
+					'email_reminder'    => isset( $_POST['email_reminder'] ) ? 1 : 0,
+					'reminder_hours'    => min( 168, max( 1, (int) ( $_POST['reminder_hours'] ?? 24 ) ) ),
+					'admin_notify_email' => sanitize_email( $_POST['admin_notify_email'] ?? get_option( 'admin_email' ) ),
+				);
+				$this->wpdb->update(
+					$this->prefix . 'dinia_customers',
+					array( 'settings' => wp_json_encode( $settings ) ),
+					array( 'id' => $customer_id )
+				);
+			}
+			wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-rest-settings', 'rest_customer_id' => $customer_id, 'rest_settings_saved' => '1' ), admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		// ─── E-MAIL (BREVO) speichern ───
+		if ( isset( $_POST['dinia_save_brevo'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_brevo_nonce' ) ) {
+			update_option( 'dinia_brevo_api_key', sanitize_text_field( $_POST['dinia_brevo_api_key'] ?? '' ) );
+			update_option( 'dinia_sender_email', sanitize_email( $_POST['dinia_sender_email'] ?? 'noreply@gofonia.de' ) );
+			update_option( 'dinia_sender_name', sanitize_text_field( $_POST['dinia_sender_name'] ?? 'GoFonIA' ) );
+			wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-rest-email', 'brevo_saved' => '1' ), admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		// ─── CalDAV speichern ───
+		if ( isset( $_POST['dinia_save_caldav'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_caldav_nonce' ) ) {
+			update_option( 'dinia_caldav_provider', sanitize_text_field( $_POST['dinia_caldav_provider'] ?? 'infomaniak' ) );
+			update_option( 'dinia_caldav_url', esc_url_raw( $_POST['dinia_caldav_url'] ?? '' ) );
+			update_option( 'dinia_caldav_username', sanitize_text_field( $_POST['dinia_caldav_username'] ?? '' ) );
+			if ( ! empty( $_POST['dinia_caldav_password'] ) ) {
+				update_option( 'dinia_caldav_password', sanitize_text_field( $_POST['dinia_caldav_password'] ) );
+			}
+			update_option( 'dinia_caldav_calendar', sanitize_text_field( $_POST['dinia_caldav_calendar'] ?? '' ) );
+			wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-rest-caldav', 'caldav_saved' => '1' ), admin_url( 'admin.php' ) ) );
+			exit;
+		}
+
+		// ─── AFFILIATE speichern ───
+		if ( isset( $_POST['dinia_save_affiliate'] ) && wp_verify_nonce( $_POST['_wpnonce'] ?? '', 'dinia_affiliate_nonce' ) ) {
+			update_option( 'dinia_affiliate_url', esc_url_raw( $_POST['dinia_affiliate_url'] ?? '' ) );
+			wp_safe_redirect( add_query_arg( array( 'page' => 'dinia-rest-affiliate', 'affiliate_saved' => '1' ), admin_url( 'admin.php' ) ) );
+			exit;
+		}
 	}
 
 	/**
@@ -1558,5 +1645,943 @@ class DINA_Admin {
 		$css  = isset( $css_map[ $status ] ) ? $css_map[ $status ] : 'dinia-badge-pending';
 
 		printf( '<span class="dinia-badge %s">%s</span>', esc_attr( $css ), esc_html( $label ) );
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	//  9 NEUE ADMIN-TABS – RESTAURANT-KONFIGURATION (Deutsch / #ff6b00)
+	// ═══════════════════════════════════════════════════════════════
+
+	/**
+	 * Customer-Selector für Restaurant-Seiten rendern.
+	 *
+	 * @return int Gewählte Customer-ID.
+	 */
+	private function rest_get_active_customer_id() {
+		if ( isset( $_GET['rest_customer_id'] ) ) {
+			$cid = (int) $_GET['rest_customer_id'];
+			if ( $cid > 0 ) {
+				update_user_meta( get_current_user_id(), 'dinia_rest_active_customer', $cid );
+				return $cid;
+			}
+		}
+		$saved = (int) get_user_meta( get_current_user_id(), 'dinia_rest_active_customer', true );
+		if ( $saved > 0 ) {
+			return $saved;
+		}
+		// Ersten Kunden als Default
+		$first = $this->wpdb->get_var( "SELECT id FROM {$this->prefix}dinia_customers ORDER BY id ASC LIMIT 1" );
+		return $first ? (int) $first : 0;
+	}
+
+	/**
+	 * Customer-Selector-Dropdown rendern.
+	 */
+	private function render_rest_customer_selector() {
+		$customers = $this->wpdb->get_results( "SELECT id, company, slug FROM {$this->prefix}dinia_customers ORDER BY company ASC" );
+		$active    = $this->rest_get_active_customer_id();
+		$page      = isset( $_GET['page'] ) ? sanitize_text_field( $_GET['page'] ) : '';
+		?>
+		<div class="dinia-rest-customer-selector">
+			<label for="rest-customer-select">🏪 Restaurant auswählen:</label>
+			<select id="rest-customer-select" onchange="if(this.value) window.location.href='<?php echo esc_url( admin_url( 'admin.php' ) ); ?>?page=<?php echo esc_attr( $page ); ?>&rest_customer_id='+this.value;">
+				<option value="">– Bitte wählen –</option>
+				<?php foreach ( $customers as $c ) : ?>
+					<option value="<?php echo (int) $c->id; ?>" <?php selected( $active, (int) $c->id ); ?>>
+						<?php echo esc_html( $c->company ); ?> (<?php echo esc_html( $c->slug ); ?>)
+					</option>
+				<?php endforeach; ?>
+			</select>
+		</div>
+		<?php
+		return $active;
+	}
+
+	// ─── 1. ÖFFNUNGSZEITEN ───
+
+	public function render_rest_hours() {
+		$customer_id = $this->render_rest_customer_selector();
+		if ( ! $customer_id ) {
+			echo '<div class="dinia-rest-wrap"><p>Bitte wählen Sie ein Restaurant aus.</p></div>';
+			return;
+		}
+
+		$table = $this->prefix . 'dinia_hours';
+		$rows  = $this->wpdb->get_results( $this->wpdb->prepare(
+			"SELECT day_key, open, close, open2, close2, closed FROM {$table} WHERE customer_id = %d",
+			$customer_id
+		) );
+		$hours = array();
+		foreach ( $rows as $r ) {
+			$hours[ $r->day_key ] = $r;
+		}
+
+		$day_labels = array(
+			'mon' => 'Montag', 'tue' => 'Dienstag', 'wed' => 'Mittwoch',
+			'thu' => 'Donnerstag', 'fri' => 'Freitag', 'sat' => 'Samstag', 'sun' => 'Sonntag',
+		);
+
+		if ( isset( $_GET['hours_saved'] ) ) {
+			echo '<div class="dinia-rest-success">Öffnungszeiten wurden gespeichert.</div>';
+		}
+
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>🕐 Öffnungszeiten</h1>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=dinia-rest-hours&rest_customer_id=' . $customer_id ) ); ?>">
+				<?php wp_nonce_field( 'dinia_rest_hours_nonce' ); ?>
+				<input type="hidden" name="rest_customer_id" value="<?php echo (int) $customer_id; ?>">
+				<div class="dinia-rest-card">
+					<table class="widefat dinia-rest-hours-table">
+						<thead>
+							<tr>
+								<th>Tag</th>
+								<th>Geschlossen</th>
+								<th>Öffnet</th>
+								<th>Schließt</th>
+								<th>Mittag: öffnet</th>
+								<th>Mittag: schließt</th>
+							</tr>
+						</thead>
+						<tbody>
+						<?php foreach ( $day_labels as $key => $label ) :
+							$h = isset( $hours[ $key ] ) ? $hours[ $key ] : (object) array( 'open' => '11:00', 'close' => '22:00', 'open2' => '', 'close2' => '', 'closed' => 0 );
+						?>
+							<tr>
+								<td><strong><?php echo $label; ?></strong></td>
+								<td><input type="checkbox" name="hours[<?php echo $key; ?>][closed]" value="1" <?php checked( $h->closed ?? 0, 1 ); ?>></td>
+								<td><input type="time" name="hours[<?php echo $key; ?>][open]" value="<?php echo esc_attr( $h->open ?? '11:00' ); ?>"></td>
+								<td><input type="time" name="hours[<?php echo $key; ?>][close]" value="<?php echo esc_attr( $h->close ?? '22:00' ); ?>"></td>
+								<td><input type="time" name="hours[<?php echo $key; ?>][open2]" value="<?php echo esc_attr( $h->open2 ?? '' ); ?>" placeholder="–"></td>
+								<td><input type="time" name="hours[<?php echo $key; ?>][close2]" value="<?php echo esc_attr( $h->close2 ?? '' ); ?>" placeholder="–"></td>
+							</tr>
+						<?php endforeach; ?>
+						</tbody>
+					</table>
+					<p style="margin-top:16px;">
+						<button type="submit" name="dinia_save_hours" class="dinia-rest-btn-primary dinia-btn">Öffnungszeiten speichern</button>
+					</p>
+				</div>
+			</form>
+		</div>
+		<?php
+	}
+
+	// ─── 2. TISCHE ───
+
+	public function render_rest_tables() {
+		$customer_id = $this->render_rest_customer_selector();
+		if ( ! $customer_id ) {
+			echo '<div class="dinia-rest-wrap"><p>Bitte wählen Sie ein Restaurant aus.</p></div>';
+			return;
+		}
+
+		$tables = $this->wpdb->get_results( $this->wpdb->prepare(
+			"SELECT * FROM {$this->prefix}dinia_tables WHERE customer_id = %d ORDER BY seats ASC, id ASC",
+			$customer_id
+		) );
+
+		$position_labels = array( 'indoor' => 'Innen', 'outdoor' => 'Terrasse', 'bar' => 'Bar' );
+
+		if ( isset( $_GET['table_saved'] ) ) {
+			echo '<div class="dinia-rest-success">Tisch gespeichert.</div>';
+		}
+		if ( isset( $_GET['table_deleted'] ) ) {
+			echo '<div class="dinia-rest-success">Tisch gelöscht.</div>';
+		}
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>🪑 Tische verwalten</h1>
+			<div class="dinia-rest-card">
+				<div class="dinia-rest-filter-bar">
+					<button class="dinia-btn dinia-rest-btn-primary" id="dinia-add-table-btn">+ Neuen Tisch hinzufügen</button>
+				</div>
+				<table class="dinia-rest-table">
+					<thead>
+						<tr>
+							<th>ID</th>
+							<th>Name</th>
+							<th>Plätze</th>
+							<th>Position</th>
+							<th>Kombinierbar</th>
+							<th>Aktiv</th>
+							<th>Aktionen</th>
+						</tr>
+					</thead>
+					<tbody id="dinia-tables-body">
+						<?php if ( empty( $tables ) ) : ?>
+							<tr><td colspan="7" style="text-align:center;color:#999;padding:20px;">Keine Tische vorhanden.</td></tr>
+						<?php else : ?>
+							<?php foreach ( $tables as $t ) : ?>
+							<tr data-id="<?php echo (int) $t->id; ?>">
+								<td><?php echo (int) $t->id; ?></td>
+								<td><strong><?php echo esc_html( $t->name ); ?></strong></td>
+								<td><?php echo (int) $t->seats; ?>er</td>
+								<td><?php echo esc_html( $position_labels[ $t->position ] ?? $t->position ); ?></td>
+								<td><?php echo ! empty( $t->combinable ) ? '✅' : '—'; ?></td>
+								<td><?php echo ! empty( $t->active ) ? '✅' : '❌'; ?></td>
+								<td>
+									<button class="dinia-btn dinia-rest-btn-secondary dinia-btn-sm dinia-edit-table" data-id="<?php echo (int) $t->id; ?>" data-name="<?php echo esc_attr( $t->name ); ?>" data-seats="<?php echo (int) $t->seats; ?>" data-position="<?php echo esc_attr( $t->position ); ?>" data-active="<?php echo (int) $t->active; ?>" data-combinable="<?php echo (int) ( $t->combinable ?? 0 ); ?>">Bearbeiten</button>
+									<button class="dinia-btn dinia-rest-btn-danger dinia-btn-sm dinia-delete-table" data-id="<?php echo (int) $t->id; ?>">Löschen</button>
+								</td>
+							</tr>
+							<?php endforeach; ?>
+						<?php endif; ?>
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<!-- Modal Tisch hinzufügen/bearbeiten -->
+		<div id="dinia-table-modal" class="dinia-rest-modal" style="display:none;">
+			<div class="dinia-rest-modal-content">
+				<h2 id="dinia-table-modal-title">Tisch hinzufügen</h2>
+				<input type="hidden" id="dinia-table-id" value="">
+				<input type="hidden" id="dinia-table-customer-id" value="<?php echo (int) $customer_id; ?>">
+				<p>
+					<label>Name *</label>
+					<input type="text" id="dinia-table-name" class="regular-text" placeholder="z.B. Tisch 1, Terrasse 3">
+				</p>
+				<p>
+					<label>Plätze *</label>
+					<select id="dinia-table-seats">
+						<?php for ( $i = 1; $i <= 12; $i++ ) : ?>
+							<option value="<?php echo $i; ?>"><?php echo $i; ?>er Tisch</option>
+						<?php endfor; ?>
+					</select>
+				</p>
+				<p>
+					<label>Position</label>
+					<select id="dinia-table-position">
+						<option value="indoor">Innen</option>
+						<option value="outdoor">Terrasse</option>
+						<option value="bar">Bar</option>
+					</select>
+				</p>
+				<p>
+					<label><input type="checkbox" id="dinia-table-active" checked> Aktiv</label>
+				</p>
+				<p>
+					<label><input type="checkbox" id="dinia-table-combinable"> Kombinierbar</label>
+					<span style="display:block;color:#666;font-size:12px;margin-top:4px;">Mehrere Tische zusammen für große Gruppen nutzen</span>
+				</p>
+				<p>
+					<button class="dinia-btn dinia-rest-btn-primary" id="dinia-table-save">Speichern</button>
+					<button class="dinia-btn dinia-rest-btn-secondary" id="dinia-table-cancel">Abbrechen</button>
+				</p>
+			</div>
+		</div>
+
+		<script>
+		(function() {
+			var modal = document.getElementById('dinia-table-modal');
+			var btnAdd = document.getElementById('dinia-add-table-btn');
+			var btnSave = document.getElementById('dinia-table-save');
+			var btnCancel = document.getElementById('dinia-table-cancel');
+			var tableId = document.getElementById('dinia-table-id');
+			var tableName = document.getElementById('dinia-table-name');
+			var tableSeats = document.getElementById('dinia-table-seats');
+			var tablePosition = document.getElementById('dinia-table-position');
+			var tableActive = document.getElementById('dinia-table-active');
+			var tableCombinable = document.getElementById('dinia-table-combinable');
+			var tableModalTitle = document.getElementById('dinia-table-modal-title');
+			var customerId = document.getElementById('dinia-table-customer-id');
+
+			function openModal(id, name, seats, position, active, combinable) {
+				tableId.value = id || '';
+				tableName.value = name || '';
+				tableSeats.value = seats || '2';
+				tablePosition.value = position || 'indoor';
+				tableActive.checked = active ? true : false;
+				tableCombinable.checked = combinable ? true : false;
+				tableModalTitle.textContent = id ? 'Tisch bearbeiten' : 'Tisch hinzufügen';
+				modal.style.display = 'block';
+			}
+
+			btnAdd.addEventListener('click', function() { openModal(null, '', 2, 'indoor', true, false); });
+			btnCancel.addEventListener('click', function() { modal.style.display = 'none'; });
+			window.addEventListener('click', function(e) { if (e.target === modal) modal.style.display = 'none'; });
+
+			document.querySelectorAll('.dinia-edit-table').forEach(function(btn) {
+				btn.addEventListener('click', function() {
+					openModal(this.dataset.id, this.dataset.name, this.dataset.seats, this.dataset.position, this.dataset.active, this.dataset.combinable);
+				});
+			});
+
+			document.querySelectorAll('.dinia-delete-table').forEach(function(btn) {
+				btn.addEventListener('click', function() {
+					if (!confirm('Tisch wirklich löschen?')) return;
+					var id = this.dataset.id;
+					fetch('<?php echo esc_url_raw( rest_url( 'dinia/v1/admin/table/' ) ); ?>' + id, {
+						method: 'DELETE',
+						headers: { 'X-WP-Nonce': '<?php echo wp_create_nonce( 'wp_rest' ); ?>' }
+					}).then(function(r) { return r.json(); }).then(function(data) {
+						window.location.reload();
+					}).catch(function() { window.location.reload(); });
+				});
+			});
+
+			btnSave.addEventListener('click', function() {
+				var id = tableId.value;
+				var data = {
+					customer_id: customerId.value,
+					name: tableName.value,
+					seats: tableSeats.value,
+					position: tablePosition.value,
+					active: tableActive.checked ? 1 : 0,
+					combinable: tableCombinable.checked ? 1 : 0
+				};
+				var url = id ? '<?php echo esc_url_raw( rest_url( 'dinia/v1/admin/table/' ) ); ?>' + id : '<?php echo esc_url_raw( rest_url( 'dinia/v1/admin/table' ) ); ?>';
+				var method = id ? 'PUT' : 'POST';
+				fetch(url, {
+					method: method,
+					headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': '<?php echo wp_create_nonce( 'wp_rest' ); ?>' },
+					body: JSON.stringify(data)
+				}).then(function(r) { return r.json(); }).then(function(resp) {
+					modal.style.display = 'none';
+					window.location.reload();
+				}).catch(function() { modal.style.display = 'none'; window.location.reload(); });
+			});
+		})();
+		</script>
+		<?php
+	}
+
+	// ─── 3. RESTAURANT-EINSTELLUNGEN ───
+
+	public function render_rest_settings() {
+		$customer_id = $this->render_rest_customer_selector();
+		if ( ! $customer_id ) {
+			echo '<div class="dinia-rest-wrap"><p>Bitte wählen Sie ein Restaurant aus.</p></div>';
+			return;
+		}
+
+		$settings = DINA_Booking::get_settings( $customer_id );
+
+		if ( isset( $_GET['rest_settings_saved'] ) ) {
+			echo '<div class="dinia-rest-success">Einstellungen wurden gespeichert.</div>';
+		}
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>⚙️ Restaurant-Einstellungen</h1>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=dinia-rest-settings&rest_customer_id=' . $customer_id ) ); ?>">
+				<?php wp_nonce_field( 'dinia_rest_settings_nonce' ); ?>
+				<input type="hidden" name="rest_customer_id" value="<?php echo (int) $customer_id; ?>">
+				<div class="dinia-rest-card">
+					<h2>Allgemein</h2>
+					<div class="dinia-rest-form">
+						<div class="form-row">
+							<label>Restaurant-Name</label>
+							<input type="text" name="restaurant_name" value="<?php echo esc_attr( $settings['restaurant_name'] ?? '' ); ?>" class="regular-text">
+						</div>
+						<div class="form-row">
+							<label>Primärfarbe</label>
+							<input type="color" name="primary_color" value="<?php echo esc_attr( $settings['primary_color'] ?? '#ff6b00' ); ?>">
+							<code style="margin-left:8px;"><?php echo esc_html( $settings['primary_color'] ?? '#ff6b00' ); ?></code>
+						</div>
+					</div>
+
+					<h2>Slot-Konfiguration</h2>
+					<div class="dinia-rest-form">
+						<div class="form-row">
+							<label>Slot-Dauer (Minuten)</label>
+							<select name="slot_duration">
+								<?php foreach ( array( 30, 60, 90, 120, 150, 180 ) as $val ) : ?>
+									<option value="<?php echo $val; ?>" <?php selected( $settings['slot_duration'] ?? 120, $val ); ?>><?php echo $val; ?> Min</option>
+								<?php endforeach; ?>
+							</select>
+						</div>
+						<div class="form-row">
+							<label>Slot-Intervall (Minuten)</label>
+							<select name="slot_interval">
+								<option value="15" <?php selected( $settings['slot_interval'] ?? 30, 15 ); ?>>15 Min</option>
+								<option value="30" <?php selected( $settings['slot_interval'] ?? 30, 30 ); ?>>30 Min</option>
+								<option value="60" <?php selected( $settings['slot_interval'] ?? 30, 60 ); ?>>60 Min</option>
+							</select>
+						</div>
+						<div class="form-row">
+							<label>Min. Vorlaufzeit (Stunden)</label>
+							<select name="min_advance_hours">
+								<?php for ( $i = 1; $i <= 48; $i++ ) : ?>
+									<option value="<?php echo $i; ?>" <?php selected( $settings['min_advance_hours'] ?? 2, $i ); ?>><?php echo $i; ?>h</option>
+								<?php endfor; ?>
+							</select>
+						</div>
+						<div class="form-row">
+							<label>Max. Vorausbuchung (Tage)</label>
+							<select name="max_advance_days">
+								<?php for ( $i = 1; $i <= 90; $i++ ) : ?>
+									<option value="<?php echo $i; ?>" <?php selected( $settings['max_advance_days'] ?? 30, $i ); ?>><?php echo $i; ?> Tage</option>
+								<?php endfor; ?>
+							</select>
+						</div>
+					</div>
+
+					<h2>E-Mail-Benachrichtigungen</h2>
+					<div class="dinia-rest-form">
+						<div class="form-row">
+							<label>
+								<input type="checkbox" name="email_confirm" value="1" <?php checked( $settings['email_confirm'] ?? 1, 1 ); ?>>
+								Bestätigungs-E-Mail senden
+							</label>
+						</div>
+						<div class="form-row">
+							<label>
+								<input type="checkbox" name="email_reminder" value="1" <?php checked( $settings['email_reminder'] ?? 0, 1 ); ?>>
+								Erinnerungs-E-Mail senden
+							</label>
+							<select name="reminder_hours" style="max-width:120px;">
+								<option value="4" <?php selected( $settings['reminder_hours'] ?? 24, 4 ); ?>>4h</option>
+								<option value="12" <?php selected( $settings['reminder_hours'] ?? 24, 12 ); ?>>12h</option>
+								<option value="24" <?php selected( $settings['reminder_hours'] ?? 24, 24 ); ?>>24h</option>
+								<option value="48" <?php selected( $settings['reminder_hours'] ?? 24, 48 ); ?>>48h</option>
+							</select>
+							<span style="color:#666;font-size:12px;">Stunden vorher</span>
+						</div>
+						<div class="form-row">
+							<label>Admin-Benachrichtigung an</label>
+							<input type="email" name="admin_notify_email" value="<?php echo esc_attr( $settings['admin_notify_email'] ?? get_option( 'admin_email' ) ); ?>" placeholder="admin@example.com">
+						</div>
+					</div>
+
+					<p style="margin-top:16px;">
+						<button type="submit" name="dinia_save_rest_settings" class="dinia-btn dinia-rest-btn-primary">Einstellungen speichern</button>
+					</p>
+				</div>
+			</form>
+		</div>
+		<?php
+	}
+
+	// ─── 4. E-MAIL (BREVO) ───
+
+	public function render_rest_email() {
+		$api_key     = get_option( 'dinia_brevo_api_key', '' );
+		$sender_email = get_option( 'dinia_sender_email', 'noreply@gofonia.de' );
+		$sender_name  = get_option( 'dinia_sender_name', 'GoFonIA' );
+
+		if ( isset( $_GET['brevo_saved'] ) ) {
+			echo '<div class="dinia-rest-success">Brevo-Einstellungen gespeichert.</div>';
+		}
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>📧 E-Mail-Versand (Brevo)</h1>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=dinia-rest-email' ) ); ?>">
+				<?php wp_nonce_field( 'dinia_brevo_nonce' ); ?>
+				<div class="dinia-rest-card">
+					<p class="description" style="margin-top:0;">E-Mails werden über Brevo (Sendinblue) versendet statt über PHP sendmail.</p>
+					<div class="dinia-rest-form">
+						<div class="form-row">
+							<label>Brevo API-Key</label>
+							<input type="password" name="dinia_brevo_api_key" value="<?php echo esc_attr( $api_key ); ?>" class="regular-text" placeholder="xkeysib-..." autocomplete="off">
+							<span style="color:#666;font-size:12px;">API-Key v3 aus dem Brevo-Dashboard → SMTP & API → API-Keys.</span>
+						</div>
+						<div class="form-row">
+							<label>Absender-E-Mail</label>
+							<input type="email" name="dinia_sender_email" value="<?php echo esc_attr( $sender_email ); ?>" class="regular-text" placeholder="noreply@domain.de">
+							<span style="color:#666;font-size:12px;">Muss in Brevo als Absender verifiziert sein.</span>
+						</div>
+						<div class="form-row">
+							<label>Absender-Name</label>
+							<input type="text" name="dinia_sender_name" value="<?php echo esc_attr( $sender_name ); ?>" class="regular-text" placeholder="GoFonIA">
+						</div>
+						<div class="form-row">
+							<label>Test-E-Mail senden</label>
+							<button type="button" class="dinia-btn dinia-rest-btn-primary" id="dinia-test-brevo">Test senden</button>
+							<span id="dinia-brevo-status" style="margin-left:10px;"></span>
+							<span style="display:block;color:#666;font-size:12px;margin-top:4px;">Sendet eine Test-E-Mail an <code><?php echo esc_html( get_option( 'admin_email' ) ); ?></code>.</span>
+						</div>
+					</div>
+					<p style="margin-top:16px;">
+						<button type="submit" name="dinia_save_brevo" class="dinia-btn dinia-rest-btn-primary">Brevo-Einstellungen speichern</button>
+					</p>
+				</div>
+			</form>
+		</div>
+
+		<script>
+		document.getElementById('dinia-test-brevo').addEventListener('click', function() {
+			var btn = this;
+			var status = document.getElementById('dinia-brevo-status');
+			btn.disabled = true;
+			status.innerHTML = '⏳ Sende...';
+			fetch('<?php echo esc_url_raw( rest_url( 'dinia/v1/admin/test-email' ) ); ?>', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': '<?php echo wp_create_nonce( 'wp_rest' ); ?>' }
+			}).then(function(r) { return r.json(); }).then(function(data) {
+				if (data.success) {
+					status.innerHTML = '✅ ' + (data.data || 'Test-E-Mail gesendet!');
+				} else {
+					status.innerHTML = '❌ ' + (data.data || data.message || 'Fehler');
+				}
+				btn.disabled = false;
+			}).catch(function(err) {
+				status.innerHTML = '❌ Verbindungsfehler';
+				btn.disabled = false;
+			});
+		});
+		</script>
+		<?php
+	}
+
+	// ─── 5. CalDAV ───
+
+	public function render_rest_caldav() {
+		$provider   = get_option( 'dinia_caldav_provider', 'infomaniak' );
+		$url        = get_option( 'dinia_caldav_url', '' );
+		$username   = get_option( 'dinia_caldav_username', '' );
+		$caldav_pass = get_option( 'dinia_caldav_password', '' );
+		$calendar   = get_option( 'dinia_caldav_calendar', '' );
+
+		$providers = array(
+			'infomaniak' => 'Infomaniak',
+			'google'     => 'Google Calendar',
+			'gmx'        => 'GMX',
+			'webde'      => 'web.de',
+			'icloud'     => 'Apple iCloud',
+			'custom'     => 'Eigener Server',
+		);
+
+		if ( isset( $_GET['caldav_saved'] ) ) {
+			echo '<div class="dinia-rest-success">CalDAV-Einstellungen gespeichert.</div>';
+		}
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>📅 CalDAV-Kalender</h1>
+			<p class="description">Reservierungen werden automatisch in den Kalender synchronisiert.</p>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=dinia-rest-caldav' ) ); ?>">
+				<?php wp_nonce_field( 'dinia_caldav_nonce' ); ?>
+				<div class="dinia-rest-card">
+					<div class="dinia-rest-form">
+						<div class="form-row">
+							<label>Anbieter</label>
+							<select name="dinia_caldav_provider" id="dinia-caldav-provider">
+								<?php foreach ( $providers as $key => $label ) : ?>
+									<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $provider, $key ); ?>><?php echo esc_html( $label ); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<span id="dinia-provider-hint" style="display:block;color:#666;font-size:12px;margin-top:4px;">Wähle einen Anbieter – Felder werden automatisch ausgefüllt.</span>
+						</div>
+						<div class="form-row">
+							<label>CalDAV-URL</label>
+							<input type="url" name="dinia_caldav_url" id="dinia-caldav-url" value="<?php echo esc_attr( $url ); ?>" class="regular-text" placeholder="https://sync.infomaniak.com/calendars/">
+						</div>
+						<div class="form-row">
+							<label>Benutzername</label>
+							<input type="text" name="dinia_caldav_username" id="dinia-caldav-username" value="<?php echo esc_attr( $username ); ?>" class="regular-text" placeholder="z.B. GO01132">
+						</div>
+						<div class="form-row">
+							<label>Passwort</label>
+							<input type="password" name="dinia_caldav_password" id="dinia-caldav-password" value="<?php echo esc_attr( $caldav_pass ); ?>" class="regular-text" placeholder="App-Passwort" autocomplete="off">
+						</div>
+						<div class="form-row">
+							<label>Kalender-Name</label>
+							<input type="text" name="dinia_caldav_calendar" id="dinia-caldav-calendar" value="<?php echo esc_attr( $calendar ); ?>" class="regular-text" placeholder="default">
+						</div>
+						<div class="form-row">
+							<label>Verbindung testen</label>
+							<button type="button" class="dinia-btn dinia-rest-btn-primary" id="dinia-test-caldav">Testen</button>
+							<span id="dinia-caldav-status" style="margin-left:10px;"></span>
+						</div>
+					</div>
+					<p style="margin-top:16px;">
+						<button type="submit" name="dinia_save_caldav" class="dinia-btn dinia-rest-btn-primary">CalDAV-Einstellungen speichern</button>
+					</p>
+				</div>
+			</form>
+		</div>
+
+		<script>
+		var caldavPresets = {
+			'infomaniak': { url: 'https://sync.infomaniak.com/calendars/', username: 'GO...', calendar: 'dbc10e70-...', hint: 'Benutzername = Infomaniak-Kundennummer (z.B. GO01132). Passwort = Account-Passwort.' },
+			'google':     { url: 'https://apidata.googleusercontent.com/caldav/v2', username: 'name@gmail.com', calendar: 'default', hint: 'Benutzername = Gmail-Adresse. Passwort = App-Passwort (kein Google-Account-Passwort!).' },
+			'gmx':        { url: 'https://caldav.gmx.net', username: 'name@gmx.de', calendar: 'default', hint: 'Benutzername = Vollständige E-Mail-Adresse. Passwort = GMX-Passwort.' },
+			'webde':      { url: 'https://caldav.web.de', username: 'name@web.de', calendar: 'default', hint: 'Benutzername = Vollständige E-Mail-Adresse. Passwort = web.de-Passwort.' },
+			'icloud':     { url: 'https://caldav.icloud.com/', username: 'appleid@icloud.com', calendar: 'default', hint: 'Benutzername = Apple-ID-E-Mail. Passwort = App-spezifisches Passwort.' },
+			'custom':     { url: '', username: '', calendar: '', hint: 'Trage URL, Benutzername und Passwort deines eigenen CalDAV-Servers ein.' }
+		};
+		document.getElementById('dinia-caldav-provider').addEventListener('change', function() {
+			var p = caldavPresets[this.value];
+			if (p) {
+				var urlField = document.getElementById('dinia-caldav-url');
+				if (urlField.value === '' || confirm('Felder mit den Presets überschreiben?')) {
+					urlField.value = p.url;
+					if (p.username) document.getElementById('dinia-caldav-username').placeholder = p.username;
+					document.getElementById('dinia-caldav-calendar').placeholder = p.calendar;
+					document.getElementById('dinia-provider-hint').textContent = p.hint;
+				}
+			}
+		});
+
+		document.getElementById('dinia-test-caldav').addEventListener('click', function() {
+			var btn = this;
+			var status = document.getElementById('dinia-caldav-status');
+			btn.disabled = true;
+			status.innerHTML = '⏳ Teste Verbindung...';
+			var data = {
+				dinia_caldav_url: document.getElementById('dinia-caldav-url').value,
+				dinia_caldav_username: document.getElementById('dinia-caldav-username').value,
+				dinia_caldav_password: document.getElementById('dinia-caldav-password').value,
+				dinia_caldav_calendar: document.getElementById('dinia-caldav-calendar').value,
+				dinia_caldav_provider: document.getElementById('dinia-caldav-provider').value
+			};
+			fetch('<?php echo esc_url_raw( rest_url( 'dinia/v1/admin/test-caldav' ) ); ?>', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': '<?php echo wp_create_nonce( 'wp_rest' ); ?>' },
+				body: JSON.stringify(data)
+			}).then(function(r) { return r.json(); }).then(function(data) {
+				if (data.success) {
+					status.innerHTML = '✅ ' + (data.data || 'Verbindung erfolgreich!');
+				} else {
+					status.innerHTML = '❌ ' + (data.data || data.message || 'Fehler');
+				}
+				btn.disabled = false;
+			}).catch(function(err) {
+				status.innerHTML = '❌ Verbindungsfehler';
+				btn.disabled = false;
+			});
+		});
+		</script>
+		<?php
+	}
+
+	// ─── 6. NEUE BUCHUNG ───
+
+	public function render_rest_new_booking() {
+		$customer_id = $this->render_rest_customer_selector();
+		if ( ! $customer_id ) {
+			echo '<div class="dinia-rest-wrap"><p>Bitte wählen Sie ein Restaurant aus.</p></div>';
+			return;
+		}
+
+		$tables = $this->wpdb->get_results( $this->wpdb->prepare(
+			"SELECT id, name, seats, combinable FROM {$this->prefix}dinia_tables WHERE active = 1 AND customer_id = %d ORDER BY seats ASC",
+			$customer_id
+		) );
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>➕ Neue Buchung</h1>
+			<div class="dinia-rest-card">
+				<form id="dinia-admin-booking-form" class="dinia-rest-form">
+					<input type="hidden" name="customer_id" id="dinia-booking-customer-id" value="<?php echo (int) $customer_id; ?>">
+					<div class="form-row">
+						<label for="dinia-booking-date">Datum *</label>
+						<input type="date" id="dinia-booking-date" name="date" required min="<?php echo current_time( 'Y-m-d' ); ?>" value="<?php echo current_time( 'Y-m-d' ); ?>">
+					</div>
+					<div class="form-row">
+						<label for="dinia-booking-time">Uhrzeit *</label>
+						<input type="time" id="dinia-booking-time" name="time_start" required value="<?php echo current_time( 'H:i' ); ?>">
+					</div>
+					<div class="form-row">
+						<label for="dinia-booking-guests">Personen *</label>
+						<select id="dinia-booking-guests" name="guest_count">
+							<?php for ( $i = 1; $i <= 12; $i++ ) : ?>
+								<option value="<?php echo $i; ?>"><?php echo $i; ?> Person<?php echo $i > 1 ? 'en' : ''; ?></option>
+							<?php endfor; ?>
+						</select>
+					</div>
+					<div class="form-row">
+						<label for="dinia-booking-table">Tisch</label>
+						<select id="dinia-booking-table" name="table_id">
+							<option value="">– Automatisch zuweisen –</option>
+							<?php foreach ( $tables as $t ) : ?>
+								<option value="<?php echo (int) $t->id; ?>"><?php echo esc_html( $t->name ); ?> (<?php echo (int) $t->seats; ?>er<?php echo ! empty( $t->combinable ) ? ', kombinierbar' : ''; ?>)</option>
+							<?php endforeach; ?>
+						</select>
+					</div>
+					<div class="form-row">
+						<label for="dinia-booking-name">Name *</label>
+						<input type="text" id="dinia-booking-name" name="guest_name" required class="regular-text">
+					</div>
+					<div class="form-row">
+						<label for="dinia-booking-email">E-Mail</label>
+						<input type="email" id="dinia-booking-email" name="guest_email" class="regular-text">
+					</div>
+					<div class="form-row">
+						<label for="dinia-booking-phone">Telefon</label>
+						<input type="tel" id="dinia-booking-phone" name="guest_phone" class="regular-text">
+					</div>
+					<div class="form-row">
+						<label for="dinia-booking-notes">Notiz</label>
+						<textarea id="dinia-booking-notes" name="notes" rows="3" class="large-text"></textarea>
+					</div>
+					<p>
+						<button type="submit" class="dinia-btn dinia-rest-btn-primary">Buchung erstellen</button>
+						<span id="dinia-booking-status" style="margin-left:10px;"></span>
+					</p>
+				</form>
+			</div>
+		</div>
+
+		<script>
+		document.getElementById('dinia-admin-booking-form').addEventListener('submit', function(e) {
+			e.preventDefault();
+			var btn = this.querySelector('button[type="submit"]');
+			var status = document.getElementById('dinia-booking-status');
+			btn.disabled = true;
+			status.innerHTML = '⏳ Erstelle Buchung...';
+			var data = {
+				customer_id: document.getElementById('dinia-booking-customer-id').value,
+				date: document.getElementById('dinia-booking-date').value,
+				time_start: document.getElementById('dinia-booking-time').value,
+				guest_count: document.getElementById('dinia-booking-guests').value,
+				table_id: document.getElementById('dinia-booking-table').value,
+				guest_name: document.getElementById('dinia-booking-name').value,
+				guest_email: document.getElementById('dinia-booking-email').value,
+				guest_phone: document.getElementById('dinia-booking-phone').value,
+				notes: document.getElementById('dinia-booking-notes').value,
+				source: 'admin'
+			};
+			fetch('<?php echo esc_url_raw( rest_url( 'dinia/v1/admin/create-booking' ) ); ?>', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': '<?php echo wp_create_nonce( 'wp_rest' ); ?>' },
+				body: JSON.stringify(data)
+			}).then(function(r) { return r.json(); }).then(function(resp) {
+				if (resp.success) {
+					status.innerHTML = '✅ Buchung erstellt! (ID: ' + (resp.data || '') + ')';
+					document.getElementById('dinia-admin-booking-form').reset();
+				} else {
+					status.innerHTML = '❌ ' + (resp.data || resp.message || 'Fehler');
+				}
+				btn.disabled = false;
+			}).catch(function(err) {
+				status.innerHTML = '❌ Verbindungsfehler';
+				btn.disabled = false;
+			});
+		});
+		</script>
+		<?php
+	}
+
+	// ─── 7. RESERVIERUNGEN ───
+
+	public function render_rest_reservations() {
+		$customer_id = $this->render_rest_customer_selector();
+		if ( ! $customer_id ) {
+			echo '<div class="dinia-rest-wrap"><p>Bitte wählen Sie ein Restaurant aus.</p></div>';
+			return;
+		}
+
+		$filter_date   = isset( $_GET['filter_date'] ) ? sanitize_text_field( $_GET['filter_date'] ) : current_time( 'Y-m-d' );
+		$filter_status = isset( $_GET['filter_status'] ) ? sanitize_text_field( $_GET['filter_status'] ) : '';
+
+		$where  = $this->wpdb->prepare( 'WHERE r.customer_id = %d', $customer_id );
+		$params = array( $customer_id );
+		if ( $filter_date ) {
+			$where   .= $this->wpdb->prepare( ' AND r.date = %s', $filter_date );
+			$params[] = $filter_date;
+		}
+		if ( $filter_status ) {
+			$where   .= $this->wpdb->prepare( ' AND r.status = %s', $filter_status );
+			$params[] = $filter_status;
+		}
+
+		$reservations = $this->wpdb->get_results(
+			"SELECT r.*, t.name as table_name, t.seats
+			 FROM {$this->prefix}dinia_reservations r
+			 LEFT JOIN {$this->prefix}dinia_tables t ON r.table_id = t.id
+			 {$where}
+			 ORDER BY r.date DESC, r.time_start ASC"
+		);
+
+		$status_labels = array(
+			'confirmed' => 'Bestätigt',
+			'cancelled' => 'Storniert',
+			'no-show'   => 'Nicht erschienen',
+		);
+
+		if ( isset( $_GET['status_updated'] ) ) {
+			echo '<div class="dinia-rest-success">Status aktualisiert.</div>';
+		}
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>📋 Reservierungen</h1>
+			<div class="dinia-rest-filter-bar">
+				<form method="get" style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;width:100%;">
+					<input type="hidden" name="page" value="dinia-rest-reservations">
+					<input type="hidden" name="rest_customer_id" value="<?php echo (int) $customer_id; ?>">
+					<label>Datum: <input type="date" name="filter_date" value="<?php echo esc_attr( $filter_date ); ?>"></label>
+					<label>Status:
+						<select name="filter_status">
+							<option value="">Alle</option>
+							<option value="confirmed" <?php selected( $filter_status, 'confirmed' ); ?>>Bestätigt</option>
+							<option value="cancelled" <?php selected( $filter_status, 'cancelled' ); ?>>Storniert</option>
+							<option value="no-show" <?php selected( $filter_status, 'no-show' ); ?>>Nicht erschienen</option>
+						</select>
+					</label>
+					<button type="submit" class="dinia-btn dinia-rest-btn-primary">Filtern</button>
+				</form>
+			</div>
+			<div class="dinia-rest-card">
+				<table class="dinia-rest-table">
+					<thead>
+						<tr>
+							<th>Datum</th>
+							<th>Uhrzeit</th>
+							<th>Gast</th>
+							<th>Pers.</th>
+							<th>Tisch</th>
+							<th>Telefon</th>
+							<th>Status</th>
+							<th>Quelle</th>
+							<th>Aktion</th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php if ( empty( $reservations ) ) : ?>
+							<tr><td colspan="9" style="text-align:center;color:#999;padding:30px;">Keine Reservierungen gefunden.</td></tr>
+						<?php else : ?>
+							<?php foreach ( $reservations as $r ) : ?>
+							<tr>
+								<td><?php echo esc_html( date_i18n( 'd.m.Y', strtotime( $r->date ) ) ); ?></td>
+								<td><?php echo esc_html( substr( $r->time_start, 0, 5 ) ); ?></td>
+								<td><strong><?php echo esc_html( $r->guest_name ); ?></strong></td>
+								<td><?php echo (int) $r->guest_count; ?></td>
+								<td><?php echo esc_html( $r->table_name ?: '—' ); ?></td>
+								<td><?php echo esc_html( $r->guest_phone ?: '—' ); ?></td>
+								<td><span class="dinia-rest-status dinia-rest-badge-<?php echo esc_attr( $r->status === 'confirmed' ? 'confirmed' : ( $r->status === 'cancelled' ? 'cancelled' : 'pending' ) ); ?>"><?php echo esc_html( $status_labels[ $r->status ] ?? $r->status ); ?></span></td>
+								<td><?php echo $r->source === 'admin' ? '📞 Admin' : '🌐 Online'; ?></td>
+								<td>
+									<select class="dinia-status-select" data-id="<?php echo (int) $r->id; ?>" data-customer="<?php echo (int) $customer_id; ?>">
+										<option value="confirmed" <?php selected( $r->status, 'confirmed' ); ?>>Bestätigt</option>
+										<option value="cancelled" <?php selected( $r->status, 'cancelled' ); ?>>Storniert</option>
+									</select>
+								</td>
+							</tr>
+							<?php endforeach; ?>
+						<?php endif; ?>
+					</tbody>
+				</table>
+			</div>
+		</div>
+
+		<script>
+		document.querySelectorAll('.dinia-status-select').forEach(function(sel) {
+			sel.addEventListener('change', function() {
+				var status = this.value;
+				var id = this.dataset.id;
+				var customerId = this.dataset.customer;
+				if (!confirm('Status ändern zu: ' + (status === 'confirmed' ? 'Bestätigt' : 'Storniert') + '?')) {
+					this.value = this.querySelector('option[selected]') ? this.querySelector('option[selected]').value : 'confirmed';
+					return;
+				}
+				fetch('<?php echo esc_url_raw( rest_url( 'dinia/v1/admin/update-status' ) ); ?>', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': '<?php echo wp_create_nonce( 'wp_rest' ); ?>' },
+					body: JSON.stringify({ id: id, status: status, customer_id: customerId })
+				}).then(function(r) { return r.json(); }).then(function(data) {
+					window.location.reload();
+				}).catch(function() { window.location.reload(); });
+			});
+		});
+		</script>
+		<?php
+	}
+
+	// ─── 8. EINBETTEN ───
+
+	public function render_rest_embed() {
+		$customer_id = $this->render_rest_customer_selector();
+		if ( ! $customer_id ) {
+			echo '<div class="dinia-rest-wrap"><p>Bitte wählen Sie ein Restaurant aus.</p></div>';
+			return;
+		}
+
+		$customer = $this->customers->get_by_id( $customer_id );
+		$slug     = $customer ? $customer->slug : '';
+		$home_url = home_url();
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>🔌 Einbetten</h1>
+			<p style="font-size:15px;color:#555;">Kopiere den Code, der zu deiner Website passt, und füge ihn ein.</p>
+
+			<div class="dinia-rest-card">
+				<h2>📋 Shortcode (WordPress)</h2>
+				<p>Einfach in eine beliebige Seite oder Beitrag einfügen.</p>
+				<div class="dinia-rest-code-box">
+					<code id="dinia-code-shortcode">[dinia slug="<?php echo esc_attr( $slug ); ?>"]</code>
+					<button class="dinia-rest-copy-btn" data-target="dinia-code-shortcode">📋 Kopieren</button>
+				</div>
+			</div>
+
+			<div class="dinia-rest-card">
+				<h2>🐘 PHP-Code (Theme)</h2>
+				<p>Direkt in eine Template-Datei einfügen (z.B. <code>page.php</code> oder <code>footer.php</code>).</p>
+				<div class="dinia-rest-code-box">
+					<code id="dinia-code-php">&lt;?php echo do_shortcode( '[dinia slug="<?php echo esc_attr( $slug ); ?>"]' ); ?&gt;</code>
+					<button class="dinia-rest-copy-btn" data-target="dinia-code-php">📋 Kopieren</button>
+				</div>
+			</div>
+
+			<div class="dinia-rest-card">
+				<h2>🌐 Widget-JS (externe Website)</h2>
+				<p>Für Websites ohne WordPress (z.B. Jimdo, Wix, HTML).</p>
+				<div class="dinia-rest-code-box">
+					<code id="dinia-code-js">&lt;div id="dinia-booking-widget"&gt;&lt;/div&gt;
+&lt;script src="<?php echo esc_url( $home_url ); ?>/wp-content/plugins/gobookme-saas/public/js/widget.js" data-slug="<?php echo esc_attr( $slug ); ?>"&gt;&lt;/script&gt;</code>
+					<button class="dinia-rest-copy-btn" data-target="dinia-code-js">📋 Kopieren</button>
+				</div>
+			</div>
+		</div>
+
+		<script>
+		document.querySelectorAll('.dinia-rest-copy-btn').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				var target = document.getElementById(this.dataset.target);
+				if (!target) return;
+				var text = target.textContent || target.innerText;
+				if (navigator.clipboard && navigator.clipboard.writeText) {
+					navigator.clipboard.writeText(text).then(function() {
+						var orig = btn.innerHTML;
+						btn.innerHTML = '✅ Kopiert!';
+						setTimeout(function() { btn.innerHTML = orig; }, 2000);
+					}).catch(function() { fallbackCopy(text, btn); });
+				} else {
+					fallbackCopy(text, btn);
+				}
+			});
+		});
+		function fallbackCopy(text, btn) {
+			var ta = document.createElement('textarea');
+			ta.value = text;
+			document.body.appendChild(ta);
+			ta.select();
+			document.execCommand('copy');
+			document.body.removeChild(ta);
+			var orig = btn.innerHTML;
+			btn.innerHTML = '✅ Kopiert!';
+			setTimeout(function() { btn.innerHTML = orig; }, 2000);
+		}
+		</script>
+		<?php
+	}
+
+	// ─── 9. AFFILIATE ───
+
+	public function render_rest_affiliate() {
+		$affiliate_url = get_option( 'dinia_affiliate_url', '' );
+
+		if ( isset( $_GET['affiliate_saved'] ) ) {
+			echo '<div class="dinia-rest-success">Affiliate-Link gespeichert.</div>';
+		}
+		?>
+		<div class="wrap dinia-rest-wrap">
+			<h1>🔗 Affiliate</h1>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin.php?page=dinia-rest-affiliate' ) ); ?>">
+				<?php wp_nonce_field( 'dinia_affiliate_nonce' ); ?>
+				<div class="dinia-rest-card">
+					<div class="dinia-rest-form">
+						<div class="form-row">
+							<label>Eigener Powered-by-Link</label>
+							<input type="url" name="dinia_affiliate_url" value="<?php echo esc_attr( $affiliate_url ); ?>" class="regular-text" placeholder="https://partner.example.com/ref=123">
+							<span style="display:block;color:#666;font-size:12px;margin-top:4px;">Wird im "Powered by Dinia"-Link im Buchungsformular verwendet. Leer = Standard-Link.</span>
+						</div>
+					</div>
+					<p style="margin-top:16px;">
+						<button type="submit" name="dinia_save_affiliate" class="dinia-btn dinia-rest-btn-primary">Affiliate-Link speichern</button>
+					</p>
+				</div>
+			</form>
+		</div>
+		<?php
 	}
 }
