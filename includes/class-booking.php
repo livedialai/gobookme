@@ -839,14 +839,18 @@ class DINA_Booking {
 	 * @return void
 	 */
 	public static function send_confirmation_email( $res_id ) {
-		$settings = self::get_settings();
-
-		if ( empty( $settings['email_confirm'] ) ) {
+		$r = self::get_reservation_data( $res_id );
+		if ( ! $r ) {
 			return;
 		}
 
-		$r = self::get_reservation_data( $res_id );
-		if ( ! $r ) {
+		// E-Mail nicht erforderlich – bei leerer E-Mail keine Bestätigung senden
+		if ( empty( $r->guest_email ) ) {
+			return;
+		}
+		$settings = self::get_settings();
+
+		if ( empty( $settings['email_confirm'] ) ) {
 			return;
 		}
 

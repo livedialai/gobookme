@@ -231,6 +231,48 @@ class DINA_Account {
 				$redirect = add_query_arg( 'deleted', 'table', $redirect );
 				break;
 
+			case 'create_booking':
+				$settings = DINA_Booking::get_settings( (int) $customer->id );
+				$date      = sanitize_text_field( $_POST['booking_date'] ?? '' );
+				$time_s    = sanitize_text_field( $_POST['booking_time_start'] ?? '' );
+				$duration  = (int) ( $settings['slot_duration'] ?? 120 );
+				$time_e    = ! empty( $_POST['booking_time_end'] )
+					? sanitize_text_field( $_POST['booking_time_end'] )
+					: date( 'H:i', strtotime( $time_s ) + $duration * 60 );
+
+				$data = array(
+					'date'        => $date,
+					'time_start'  => $time_s,
+					'time_end'    => $time_e,
+					'guest_name'  => sanitize_text_field( $_POST['booking_guest_name'] ?? '' ),
+					'guest_email' => sanitize_email( $_POST['booking_guest_email'] ?? '' ),
+					'guest_phone' => sanitize_text_field( $_POST['booking_guest_phone'] ?? '' ),
+					'guest_count' => max( 1, (int) ( $_POST['booking_guest_count'] ?? 1 ) ),
+					'notes'       => sanitize_textarea_field( $_POST['booking_notes'] ?? '' ),
+					'table_id'    => (int) ( $_POST['booking_table_id'] ?? 0 ),
+					'source'      => 'admin',
+				);
+
+				$result = DINA_Booking::create_reservation( $data, (int) $customer->id );
+				if ( is_wp_error( $result ) ) {
+					$redirect = add_query_arg( 'booking_error', rawurlencode( $result->get_error_message() ), $redirect );
+				} else {
+					$redirect = add_query_arg( 'booking_created', (int) $result, $redirect );
+				}
+				break;
+
+			case 'cancel_booking':
+				$res_id = (int) ( $_POST['booking_id'] ?? 0 );
+				if ( $res_id > 0 ) {
+					$this->wpdb->update(
+						$this->prefix . 'dinia_reservations',
+						array( 'status' => 'cancelled' ),
+						array( 'id' => $res_id, 'customer_id' => (int) $customer->id )
+					);
+				}
+				$redirect = add_query_arg( 'booking_cancelled', '1', $redirect );
+				break;
+
 			case 'regenerate_api_key':
 				$new_key = $this->regenerate_api_key( (int) $customer->id );
 				if ( $new_key ) {
@@ -325,6 +367,15 @@ class DINA_Account {
 					<span style="color:#dc3545;">⚠️ Diesen Key sofort kopieren – wird nur einmal angezeigt!</span>
 				</div>
 			<?php endif; ?>
+			<?php if ( isset( $_GET['booking_created'] ) ) : ?>
+				<div class="dinia-acc-notice">✅ Buchung #<?php echo (int) $_GET['booking_created']; ?> erfolgreich erstellt.</div>
+			<?php endif; ?>
+			<?php if ( isset( $_GET['booking_error'] ) ) : ?>
+				<div class="dinia-acc-notice" style="border-left-color:#dc3545;background:#fce4e4;">❌ Fehler: <?php echo esc_html( $_GET['booking_error'] ); ?></div>
+			<?php endif; ?>
+			<?php if ( isset( $_GET['booking_cancelled'] ) ) : ?>
+				<div class="dinia-acc-notice" style="border-left-color:#dc3545;background:#fce4e4;">✅ Buchung storniert.</div>
+			<?php endif; ?>
 
 			<?php if ( ! $customer ) : ?>
 				<div class="dinia-acc-card"><p style="color:#888;">Kein Dinia-Konto zu Ihrer E-Mail gefunden.</p></div>
@@ -343,6 +394,7 @@ class DINA_Account {
 				<div class="dinia-acc-tab" data-tab="settings">⚙️ Einstellungen</div>
 				<div class="dinia-acc-tab" data-tab="hours">🕐 Öffnungszeiten</div>
 				<div class="dinia-acc-tab" data-tab="tables">🪑 Tische</div>
+				<div class="dinia-acc-tab" data-tab="bookings">📋 Buchungen</div>
 				<div class="dinia-acc-tab" data-tab="embed">🔗 Einbindung</div>
 				<div class="dinia-acc-tab" data-tab="account">👤 Abo</div>
 			</div>
@@ -567,6 +619,114 @@ class DINA_Account {
 						<label style="font-weight:400;font-size:0.85rem;"><input type="checkbox" name="table_combinable" value="1"> Kombinierbar</label>
 					</div>
 					<button type="submit" class="dinia-btn-primary-s dinia-btn-s">Hinzufügen</button>
+				</form>
+			</div>
+
+			<!-- TAB: Buchungen -->
+			<div class="dinia-acc-card dinia-tab-content" id="tab-bookings" style="display:none;">
+				<h2>📋 Buchungen verwalten</h2>
+
+				<?php
+				$bookings = $this->wpdb->get_results( $this->wpdb->prepare(
+					"SELECT r.*, t.name AS table_name
+					 FROM {$this->prefix}dinia_reservations r
+					 LEFT JOIN {$this->prefix}dinia_tables t ON r.table_id = t.id
+					 WHERE r.customer_id = %d
+					 ORDER BY r.date DESC, r.time_start DESC
+					 LIMIT 100",
+					(int) $customer->id
+				) );
+				?>
+
+				<table class="dinia-acc-table">
+					<thead><tr>
+						<th>Datum</th><th>Zeit</th><th>Gast</th><th>Pers.</th><th>Tisch</th><th>Status</th><th>Aktion</th>
+					</tr></thead>
+					<tbody>
+					<?php if ( empty( $bookings ) ) : ?>
+						<tr><td colspan="7" style="color:#888;">Noch keine Buchungen.</td></tr>
+					<?php else : ?>
+						<?php foreach ( $bookings as $b ) : ?>
+						<tr>
+							<td><?php echo esc_html( date_i18n( 'd.m.Y', strtotime( $b->date ) ) ); ?></td>
+							<td><?php echo esc_html( $b->time_start ); ?> – <?php echo esc_html( $b->time_end ); ?></td>
+							<td><?php echo esc_html( $b->guest_name ); ?><?php echo $b->guest_email ? '<br><small>' . esc_html( $b->guest_email ) . '</small>' : ''; ?></td>
+							<td><?php echo (int) $b->guest_count; ?></td>
+							<td><?php echo esc_html( $b->table_name ?: '—' ); ?></td>
+							<td><?php echo 'confirmed' === $b->status ? '✅ Bestätigt' : '❌ Storniert'; ?></td>
+							<td>
+								<?php if ( 'confirmed' === $b->status ) : ?>
+								<form method="post" style="display:inline;" onsubmit="return confirm('Buchung #<?php echo (int) $b->id; ?> stornieren?');">
+									<?php wp_nonce_field( 'dinia_account_nonce' ); ?>
+									<input type="hidden" name="dinia_action" value="cancel_booking">
+									<input type="hidden" name="booking_id" value="<?php echo (int) $b->id; ?>">
+									<button type="submit" class="dinia-btn-danger-s dinia-btn-s">Stornieren</button>
+								</form>
+								<?php endif; ?>
+							</td>
+						</tr>
+						<?php endforeach; ?>
+					<?php endif; ?>
+					</tbody>
+				</table>
+
+				<h3 style="margin:20px 0 8px;">➕ Neue Buchung anlegen</h3>
+				<form method="post">
+					<?php wp_nonce_field( 'dinia_account_nonce' ); ?>
+					<input type="hidden" name="dinia_action" value="create_booking">
+
+					<div class="dinia-acc-row">
+						<label>Datum *</label>
+						<input type="date" name="booking_date" required value="<?php echo esc_attr( date_i18n( 'Y-m-d' ) ); ?>">
+					</div>
+					<div class="dinia-acc-row">
+						<label>Von *</label>
+						<input type="time" name="booking_time_start" required value="12:00">
+					</div>
+					<div class="dinia-acc-row">
+						<label>Bis</label>
+						<input type="time" name="booking_time_end" value="" placeholder="leer = Slot-Dauer">
+						<span class="description">Optional – wenn leer wird die Slot-Dauer verwendet (<?php echo (int) $settings['slot_duration']; ?> Min.)</span>
+					</div>
+					<div class="dinia-acc-row">
+						<label>Gast-Name *</label>
+						<input type="text" name="booking_guest_name" required placeholder="z.B. Max Mustermann">
+					</div>
+					<div class="dinia-acc-row">
+						<label>E-Mail</label>
+						<input type="email" name="booking_guest_email" value="" placeholder="optional – keine Bestätigungs-E-Mail bei leerem Feld">
+						<span class="description">⚠️ Kein Pflichtfeld – leer lassen erzeugt keine E-Mail an den Gast</span>
+					</div>
+					<div class="dinia-acc-row">
+						<label>Telefon</label>
+						<input type="text" name="booking_guest_phone" value="" placeholder="optional">
+					</div>
+					<div class="dinia-acc-row">
+						<label>Personen *</label>
+						<input type="number" name="booking_guest_count" min="1" max="50" value="2" required>
+					</div>
+					<div class="dinia-acc-row">
+						<label>Tisch</label>
+						<select name="booking_table_id">
+							<option value="0">Automatisch zuweisen</option>
+							<?php
+							$tables = $this->wpdb->get_results( $this->wpdb->prepare(
+								"SELECT * FROM {$this->prefix}dinia_tables WHERE customer_id = %d ORDER BY sort_order, name",
+								(int) $customer->id
+							) );
+							foreach ( $tables as $t ) : ?>
+							<option value="<?php echo (int) $t->id; ?>"><?php echo esc_html( $t->name ); ?> (<?php echo (int) $t->capacity; ?> Pers.)</option>
+							<?php endforeach; ?>
+						</select>
+					</div>
+					<div class="dinia-acc-row">
+						<label>Notiz</label>
+						<textarea name="booking_notes" rows="2" style="flex:1;min-width:200px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;" placeholder="optional"></textarea>
+					</div>
+
+					<div style="margin-top:16px;">
+						<button type="submit" class="dinia-btn-primary-s dinia-btn-s">Buchung erstellen</button>
+					</div>
 				</form>
 			</div>
 
