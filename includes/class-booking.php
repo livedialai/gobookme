@@ -717,6 +717,11 @@ class DINA_Booking {
 			'reminder_hours'     => 24,
 			'email_confirm'      => 1,
 			'admin_notify_email' => '',
+			'caldav_provider'    => 'infomaniak',
+			'caldav_url'         => '',
+			'caldav_username'    => '',
+			'caldav_password'    => '',
+			'caldav_calendar'    => '',
 		);
 	}
 

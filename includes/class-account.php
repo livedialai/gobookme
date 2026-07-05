@@ -137,15 +137,23 @@ class DINA_Account {
 
 			case 'save_settings':
 				$settings = DINA_Booking::get_settings( (int) $customer->id );
-				$settings['restaurant_name']   = sanitize_text_field( $_POST['restaurant_name'] ?? $settings['restaurant_name'] );
-				$settings['slot_duration']     = max( 15, min( 240, (int) ( $_POST['slot_duration'] ?? $settings['slot_duration'] ) ) );
-				$settings['slot_interval']     = max( 5, min( 120, (int) ( $_POST['slot_interval'] ?? $settings['slot_interval'] ) ) );
-				$settings['max_advance_days']  = max( 1, min( 365, (int) ( $_POST['max_advance_days'] ?? $settings['max_advance_days'] ) ) );
-				$settings['min_advance_hours'] = max( 0, min( 168, (int) ( $_POST['min_advance_hours'] ?? $settings['min_advance_hours'] ) ) );
-				$settings['email_reminder']    = ! empty( $_POST['email_reminder'] ) ? 1 : 0;
-				$settings['reminder_hours']    = max( 1, min( 168, (int) ( $_POST['reminder_hours'] ?? $settings['reminder_hours'] ) ) );
-				$settings['email_confirm']     = ! empty( $_POST['email_confirm'] ) ? 1 : 0;
+				$settings['restaurant_name']    = sanitize_text_field( $_POST['restaurant_name'] ?? $settings['restaurant_name'] );
+				$settings['slot_duration']      = max( 15, min( 240, (int) ( $_POST['slot_duration'] ?? $settings['slot_duration'] ) ) );
+				$settings['slot_interval']      = max( 5, min( 120, (int) ( $_POST['slot_interval'] ?? $settings['slot_interval'] ) ) );
+				$settings['max_advance_days']   = max( 1, min( 365, (int) ( $_POST['max_advance_days'] ?? $settings['max_advance_days'] ) ) );
+				$settings['min_advance_hours']  = max( 0, min( 168, (int) ( $_POST['min_advance_hours'] ?? $settings['min_advance_hours'] ) ) );
+				$settings['email_reminder']     = ! empty( $_POST['email_reminder'] ) ? 1 : 0;
+				$settings['reminder_hours']     = max( 1, min( 168, (int) ( $_POST['reminder_hours'] ?? $settings['reminder_hours'] ) ) );
+				$settings['email_confirm']      = ! empty( $_POST['email_confirm'] ) ? 1 : 0;
 				$settings['admin_notify_email'] = sanitize_email( $_POST['admin_notify_email'] ?? $settings['admin_notify_email'] );
+				// CalDAV
+				$settings['caldav_provider']  = sanitize_text_field( $_POST['caldav_provider'] ?? $settings['caldav_provider'] ?? 'infomaniak' );
+				$settings['caldav_url']       = esc_url_raw( $_POST['caldav_url'] ?? $settings['caldav_url'] ?? '' );
+				$settings['caldav_username']  = sanitize_text_field( $_POST['caldav_username'] ?? $settings['caldav_username'] ?? '' );
+				$settings['caldav_calendar']  = sanitize_text_field( $_POST['caldav_calendar'] ?? $settings['caldav_calendar'] ?? '' );
+				if ( ! empty( $_POST['caldav_password'] ) ) {
+					$settings['caldav_password'] = sanitize_text_field( $_POST['caldav_password'] );
+				}
 
 				$this->wpdb->update(
 					$this->prefix . 'dinia_customers',
@@ -409,6 +417,44 @@ class DINA_Account {
 						<span class="description">E-Mail für neue Buchungs-Benachrichtigungen</span>
 					</div>
 
+					<h3 style="margin:20px 0 8px;">📅 CalDAV-Kalender</h3>
+					<p style="color:#666;font-size:0.85rem;margin:0 0 12px;">Reservierungen werden automatisch in den Kalender synchronisiert.</p>
+					<?php
+					$caldav_provider  = $settings['caldav_provider'] ?? 'infomaniak';
+					$caldav_url       = $settings['caldav_url'] ?? '';
+					$caldav_username  = $settings['caldav_username'] ?? '';
+					$caldav_calendar  = $settings['caldav_calendar'] ?? '';
+					$caldav_pass_hint = ! empty( $settings['caldav_password'] ) ? '********' : '';
+					?>
+					<div class="dinia-acc-row">
+						<label>Anbieter</label>
+						<select name="caldav_provider" id="dinia-caldav-provider" onchange="updateCaldavPreset()">
+							<option value="infomaniak" <?php selected( $caldav_provider, 'infomaniak' ); ?>>Infomaniak</option>
+							<option value="google" <?php selected( $caldav_provider, 'google' ); ?>>Google Calendar</option>
+							<option value="gmx" <?php selected( $caldav_provider, 'gmx' ); ?>>GMX</option>
+							<option value="webde" <?php selected( $caldav_provider, 'webde' ); ?>>web.de</option>
+							<option value="icloud" <?php selected( $caldav_provider, 'icloud' ); ?>>iCloud</option>
+							<option value="other" <?php selected( $caldav_provider, 'other' ); ?>>Anderer (manuell)</option>
+						</select>
+					</div>
+					<div class="dinia-acc-row">
+						<label>CalDAV-URL</label>
+						<input type="url" name="caldav_url" id="dinia-caldav-url" value="<?php echo esc_attr( $caldav_url ); ?>" class="regular-text" placeholder="https://sync.infomaniak.com/calendars/">
+					</div>
+					<div class="dinia-acc-row">
+						<label>Benutzername</label>
+						<input type="text" name="caldav_username" id="dinia-caldav-username" value="<?php echo esc_attr( $caldav_username ); ?>" placeholder="z.B. GO01132">
+					</div>
+					<div class="dinia-acc-row">
+						<label>Passwort</label>
+						<input type="password" name="caldav_password" value="<?php echo esc_attr( $caldav_pass_hint ); ?>" placeholder="<?php echo $caldav_pass_hint ? 'Neues Passwort (leer = unverändert)' : 'App-Passwort'; ?>" autocomplete="off">
+						<span class="description">Bei vorhandenem Passwort leer lassen, wenn es nicht geändert werden soll.</span>
+					</div>
+					<div class="dinia-acc-row">
+						<label>Kalender-Name</label>
+						<input type="text" name="caldav_calendar" id="dinia-caldav-calendar" value="<?php echo esc_attr( $caldav_calendar ); ?>" placeholder="default">
+					</div>
+
 					<div style="margin-top:16px;">
 						<button type="submit" class="dinia-btn-primary-s dinia-btn-s">Einstellungen speichern</button>
 					</div>
@@ -602,6 +648,27 @@ API-Key: <?php echo esc_html( $customer->api_key_hint ?: 'Nach Generierung oben 
 				$('#tab-' + tab).fadeIn(200);
 			});
 		});
+		var caldavPresets = {
+			'infomaniak': { url: 'https://sync.infomaniak.com/calendars/GO01132/', username: 'GO01132', calendar: 'default' },
+			'google':     { url: 'https://apidata.googleusercontent.com/caldav/v2', username: '', calendar: 'default' },
+			'gmx':        { url: 'https://caldav.gmx.net', username: '', calendar: 'default' },
+			'webde':      { url: 'https://caldav.web.de', username: '', calendar: 'default' },
+			'icloud':     { url: 'https://caldav.icloud.com/', username: '', calendar: 'default' },
+			'other':      { url: '', username: '', calendar: '' }
+		};
+		function updateCaldavPreset() {
+			var p = document.getElementById('dinia-caldav-provider').value;
+			var preset = caldavPresets[p] || { url: '', username: '', calendar: '' };
+			if (document.getElementById('dinia-caldav-url').value === '' || p !== 'other') {
+				document.getElementById('dinia-caldav-url').value = preset.url;
+			}
+			if (document.getElementById('dinia-caldav-username').value === '' || p !== 'other') {
+				document.getElementById('dinia-caldav-username').value = preset.username;
+			}
+			if (document.getElementById('dinia-caldav-calendar').value === '' || p !== 'other') {
+				document.getElementById('dinia-caldav-calendar').value = preset.calendar;
+			}
+		}
 		</script>
 		<?php
 	}
