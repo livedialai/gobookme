@@ -113,13 +113,15 @@ class DINA_CalDAV {
         $dtstart = new DateTime( $date . ' ' . $time_start, new DateTimeZone( $tz ) );
         $dtend   = new DateTime( $date . ' ' . $time_end, new DateTimeZone( $tz ) );
 
-        $summary     = "Reservierung: {$guest_name} ({$guest_count} Pers.) - {$table_name}";
+        $phone_str   = $guest_phone ? " [Tel: {$guest_phone}]" : '';
+        $email_str   = $guest_email ? " [{$guest_email}]" : '';
+        $summary     = "Reservierung: {$guest_name} ({$guest_count} Pers.){$phone_str}{$email_str} - {$table_name}";
         $description = "Gast: {$guest_name}\nE-Mail: {$guest_email}\nTelefon: {$guest_phone}\nPersonen: {$guest_count}\nTisch: {$table_name}";
         if ( $notes ) {
             $description .= "\nNotiz: {$notes}";
         }
 
-        $vcal  = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Dinia//DE\r\nBEGIN:VEVENT\r\n";
+        $vcal  = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n";
         $vcal .= "UID:{$uid}\r\n";
         $vcal .= "DTSTART;TZID={$tz}:" . $dtstart->format( 'Ymd\THis' ) . "\r\n";
         $vcal .= "DTEND;TZID={$tz}:" . $dtend->format( 'Ymd\THis' ) . "\r\n";
