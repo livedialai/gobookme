@@ -1277,7 +1277,7 @@ class DINA_REST_API {
 					// E-Mail-Bestätigung via Brevo
 					try {
 						if ( ! empty( $data['guest_email'] ) ) {
-							$restaurant_name = $customer->name ?? ( $settings['restaurant_name'] ?? 'Restaurant' );
+							$restaurant_name = ( isset( $settings ) ? ( $settings['restaurant_name'] ?? 'Restaurant' ) : 'Restaurant' );
 							$date_formatted  = date_i18n( 'l, j. F Y', strtotime( $data['date'] ) );
 							$subject         = sprintf( __( 'Ihre Reservierung bei %s', 'dinia' ), $restaurant_name );
 
