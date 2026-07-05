@@ -156,24 +156,27 @@ class DINA_Account {
 				break;
 
 			case 'save_hours':
-				$days = array( 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' );
-				foreach ( $days as $day ) {
+				$days_keys = array( 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' );
+				foreach ( $days_keys as $day ) {
 					$closed = ! empty( $_POST[ "{$day}_closed" ] );
 					$open   = sanitize_text_field( $_POST[ "{$day}_open" ] ?? '09:00' );
 					$close  = sanitize_text_field( $_POST[ "{$day}_close" ] ?? '18:00' );
+					$open2  = sanitize_text_field( $_POST[ "{$day}_open2" ] ?? '' );
+					$close2 = sanitize_text_field( $_POST[ "{$day}_close2" ] ?? '' );
 
 					$existing = $this->wpdb->get_var( $this->wpdb->prepare(
-						"SELECT id FROM {$this->prefix}dinia_hours WHERE customer_id = %d AND day = %s LIMIT 1",
+						"SELECT id FROM {$this->prefix}dinia_hours WHERE customer_id = %d AND day_key = %s LIMIT 1",
 						(int) $customer->id, $day
 					) );
 
 					$data = array(
 						'customer_id' => (int) $customer->id,
-						'day'         => $day,
-						'open'        => $closed ? '' : $open,
-						'close'       => $closed ? '' : $close,
-						'open2'       => '',
-						'close2'      => '',
+						'day_key'     => $day,
+						'open'        => $closed ? '00:00' : $open,
+						'close'       => $closed ? '00:00' : $close,
+						'open2'       => $closed || empty( $open2 ) ? '' : $open2,
+						'close2'      => $closed || empty( $close2 ) ? '' : $close2,
+						'closed'      => $closed ? 1 : 0,
 					);
 
 					if ( $existing ) {
@@ -190,6 +193,7 @@ class DINA_Account {
 				$capacity    = max( 1, (int) ( $_POST['table_capacity'] ?? 2 ) );
 				$area        = sanitize_text_field( $_POST['table_area'] ?? 'innen' );
 				$description = sanitize_text_field( $_POST['table_description'] ?? '' );
+				$combinable  = ! empty( $_POST['table_combinable'] ) ? 1 : 0;
 				if ( ! empty( $name ) ) {
 					$this->wpdb->insert(
 						$this->prefix . 'dinia_tables',
@@ -199,6 +203,7 @@ class DINA_Account {
 							'capacity'     => $capacity,
 							'area'         => $area,
 							'description'  => $description,
+							'combinable'   => $combinable,
 							'is_active'    => 1,
 							'sort_order'   => 0,
 						)
@@ -422,12 +427,14 @@ class DINA_Account {
 					$days_de = array( 'mon' => 'Montag', 'tue' => 'Dienstag', 'wed' => 'Mittwoch', 'thu' => 'Donnerstag', 'fri' => 'Freitag', 'sat' => 'Samstag', 'sun' => 'Sonntag' );
 					foreach ( $days_de as $dk => $dl ) :
 						$h = $this->wpdb->get_row( $this->wpdb->prepare(
-							"SELECT * FROM {$this->prefix}dinia_hours WHERE customer_id = %d AND day = %s LIMIT 1",
+							"SELECT * FROM {$this->prefix}dinia_hours WHERE customer_id = %d AND day_key = %s LIMIT 1",
 							(int) $customer->id, $dk
 						) );
-						$open   = $h ? $h->open : '09:00';
-						$close  = $h ? $h->close : '18:00';
-						$closed = $h && empty( $h->open ) && empty( $h->close );
+						$open   = $h && ! $h->closed ? $h->open : '09:00';
+						$close  = $h && ! $h->closed ? $h->close : '18:00';
+						$open2  = $h && ! empty( $h->open2 ) ? $h->open2 : '';
+						$close2 = $h && ! empty( $h->close2 ) ? $h->close2 : '';
+						$closed = $h ? (bool) $h->closed : false;
 					?>
 						<div class="dinia-hours-day">
 							<label><?php echo esc_html( $dl ); ?></label>
@@ -435,10 +442,17 @@ class DINA_Account {
 								<label style="font-weight:400;min-width:auto;"><input type="checkbox" name="<?php echo $dk; ?>_closed" value="1" <?php checked( $closed ); ?>> Geschlossen</label>
 							</div>
 							<div class="dinia-hour-row">
-								<span>Von</span>
+								<span style="min-width:30px;">🌤️</span>
 								<input type="time" name="<?php echo $dk; ?>_open" value="<?php echo esc_attr( $open ); ?>">
 								<span>bis</span>
 								<input type="time" name="<?php echo $dk; ?>_close" value="<?php echo esc_attr( $close ); ?>">
+							</div>
+							<div class="dinia-hour-row" style="color:#888;">
+								<span style="min-width:30px;">🌙</span>
+								<input type="time" name="<?php echo $dk; ?>_open2" value="<?php echo esc_attr( $open2 ); ?>" placeholder="–">
+								<span>bis</span>
+								<input type="time" name="<?php echo $dk; ?>_close2" value="<?php echo esc_attr( $close2 ); ?>" placeholder="–">
+								<span style="font-size:0.78rem;color:#999;">(Mittagspause)</span>
 							</div>
 						</div>
 					<?php endforeach; ?>
@@ -455,7 +469,7 @@ class DINA_Account {
 				<h2>🪑 Tische verwalten</h2>
 
 				<table class="dinia-acc-table">
-					<thead><tr><th>Name</th><th>Kapazität</th><th>Bereich</th><th>Aktion</th></tr></thead>
+					<thead><tr><th>Name</th><th>Kapazität</th><th>Bereich</th><th>Kombinierbar</th><th>Aktion</th></tr></thead>
 					<tbody>
 					<?php
 					$tables = $this->wpdb->get_results( $this->wpdb->prepare(
@@ -468,6 +482,7 @@ class DINA_Account {
 							<td><?php echo esc_html( $t->name ); ?></td>
 							<td><?php echo (int) $t->capacity; ?> Pers.</td>
 							<td><?php echo esc_html( $t->area ); ?></td>
+							<td><?php echo ! empty( $t->combinable ) ? '✅' : '—'; ?></td>
 							<td>
 								<form method="post" style="display:inline;" onsubmit="return confirm('Tisch löschen?');">
 									<?php wp_nonce_field( 'dinia_account_nonce' ); ?>
@@ -479,7 +494,7 @@ class DINA_Account {
 						</tr>
 					<?php endforeach; ?>
 					<?php if ( empty( $tables ) ) : ?>
-						<tr><td colspan="4" style="color:#888;">Noch keine Tische angelegt.</td></tr>
+						<tr><td colspan="5" style="color:#888;">Noch keine Tische angelegt.</td></tr>
 					<?php endif; ?>
 					</tbody>
 				</table>
@@ -501,6 +516,9 @@ class DINA_Account {
 							<option value="bar">Bar</option>
 							<option value="terrasse">Terrasse</option>
 						</select>
+					</div>
+					<div>
+						<label style="font-weight:400;font-size:0.85rem;"><input type="checkbox" name="table_combinable" value="1"> Kombinierbar</label>
 					</div>
 					<button type="submit" class="dinia-btn-primary-s dinia-btn-s">Hinzufügen</button>
 				</form>
