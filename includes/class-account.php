@@ -758,7 +758,7 @@ class DINA_Account {
 							<option value="0">Automatisch zuweisen</option>
 							<?php
 							$tables = $this->wpdb->get_results( $this->wpdb->prepare(
-								"SELECT * FROM {$this->prefix}dinia_tables WHERE customer_id = %d ORDER BY sort_order, name",
+								"SELECT * FROM {$this->prefix}dinia_tables WHERE customer_id = %d ORDER BY position, name",
 								(int) $customer->id
 							) );
 							foreach ( $tables as $t ) : ?>
