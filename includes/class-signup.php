@@ -899,30 +899,40 @@ class DINA_Signup {
 			$company
 		);
 
-		$headers = array(
-			'Content-Type: text/html; charset=UTF-8',
-			'From: ' . get_bloginfo( 'name' ) . ' <' . get_bloginfo( 'admin_email' ) . '>',
-		);
-
-		$message  = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:20px;">';
-		$message .= '<h2 style="color:#4a90d9;">' . esc_html__( 'Bestätigen Sie Ihre Registrierung', 'dinia' ) . '</h2>';
-		$message .= '<p>' . sprintf(
+		$message_html  = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:20px;">';
+		$message_html .= '<h2 style="color:#ff6b00;">' . esc_html__( 'Bestätigen Sie Ihre Registrierung', 'dinia' ) . '</h2>';
+		$message_html .= '<p>' . sprintf(
 			/* translators: %s: Restaurant-Name */
 			esc_html__( 'Hallo %s,', 'dinia' ),
 			esc_html( $company )
 		) . '</p>';
-		$message .= '<p>' . esc_html__( 'vielen Dank für Ihre Registrierung bei Dinia!', 'dinia' ) . '</p>';
-		$message .= '<p>' . esc_html__( 'Bitte klicken Sie auf den folgenden Button, um Ihre E-Mail-Adresse zu bestätigen und den Registrierungsprozess abzuschließen:', 'dinia' ) . '</p>';
-		$message .= '<p style="text-align:center;">';
-		$message .= '<a href="' . esc_url( $confirm_url ) . '" style="display:inline-block;padding:12px 28px;background:#4a90d9;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px;">'
+		$message_html .= '<p>' . esc_html__( 'vielen Dank für Ihre Registrierung bei Dinia!', 'dinia' ) . '</p>';
+		$message_html .= '<p>' . esc_html__( 'Bitte klicken Sie auf den folgenden Button, um Ihre E-Mail-Adresse zu bestätigen und den Registrierungsprozess abzuschließen:', 'dinia' ) . '</p>';
+		$message_html .= '<p style="text-align:center;">';
+		$message_html .= '<a href="' . esc_url( $confirm_url ) . '" style="display:inline-block;padding:12px 28px;background:#ff6b00;color:#fff;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px;">'
 			. esc_html__( 'E-Mail bestätigen', 'dinia' ) . '</a></p>';
-		$message .= '<p>' . esc_html__( 'Falls der Button nicht funktioniert, kopieren Sie folgenden Link in Ihren Browser:', 'dinia' ) . '<br>';
-		$message .= '<a href="' . esc_url( $confirm_url ) . '">' . esc_url( $confirm_url ) . '</a></p>';
-		$message .= '<hr style="border:none;border-top:1px solid #eee;margin:20px 0;">';
-		$message .= '<p style="color:#888;font-size:12px;">' . esc_html__( 'Wenn Sie keine Registrierung bei Dinia beantragt haben, ignorieren Sie bitte diese E-Mail.', 'dinia' ) . '</p>';
-		$message .= '</body></html>';
+		$message_html .= '<p>' . esc_html__( 'Falls der Button nicht funktioniert, kopieren Sie folgenden Link in Ihren Browser:', 'dinia' ) . '<br>';
+		$message_html .= '<a href="' . esc_url( $confirm_url ) . '">' . esc_url( $confirm_url ) . '</a></p>';
+		$message_html .= '<hr style="border:none;border-top:1px solid #eee;margin:20px 0;">';
+		$message_html .= '<p style="color:#888;font-size:12px;">' . esc_html__( 'Wenn Sie keine Registrierung bei Dinia beantragt haben, ignorieren Sie bitte diese E-Mail.', 'dinia' ) . '</p>';
+		$message_html .= '</body></html>';
 
-		return wp_mail( $email, $subject, $message, $headers );
+		// Versuche Brevo (DINA_Mailer), fallback auf wp_mail()
+		if ( class_exists( 'DINA_Mailer' ) ) {
+			$result = DINA_Mailer::send( $email, $subject, '', $message_html );
+			if ( true === $result ) {
+				return true;
+			}
+			// Log Brevo-Fehler
+			error_log( 'DINA Signup: DINA_Mailer failed for ' . $email . ': ' . ( is_string( $result ) ? $result : 'unknown' ) );
+		}
+
+		// Fallback: wp_mail()
+		$headers = array(
+			'Content-Type: text/html; charset=UTF-8',
+			'From: ' . get_bloginfo( 'name' ) . ' <' . get_bloginfo( 'admin_email' ) . '>',
+		);
+		return wp_mail( $email, $subject, $message_html, $headers );
 	}
 
 	/**
