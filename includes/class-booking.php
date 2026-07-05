@@ -46,7 +46,7 @@ class DINA_Booking {
 	 * @param int $customer_id Customer-ID.
 	 * @return array Settings-Array.
 	 */
-	public static function get_settings( $customer_id ) {
+	public static function get_settings( $customer_id = 0 ) {
 		global $wpdb;
 
 		$customer_id = self::resolve_customer_id( $customer_id );
