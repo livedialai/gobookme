@@ -3,7 +3,7 @@
  * Plugin Name: Dinia – GoBookMe SaaS
  * Plugin URI:  https://dinia.gomeetme.com
  * Description: Multi-User-Reservierungssystem für Restaurants. Mollie Billing, JS-Widget, API-Key-Auth.
- * Version:     1.3.0
+ * Version:     1.3.1
  * Author:      Dinia (GoFonIA)
  * Text Domain: dinia
  * Domain Path: /languages
@@ -13,7 +13,7 @@
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-define( 'DINIA_VERSION', '1.3.0' );
+define( 'DINIA_VERSION', '1.3.1' );
 define( 'DINIA_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'DINIA_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 

@@ -409,6 +409,7 @@ class DINA_Account {
 				<div class="dinia-acc-tab" data-tab="hours">🕐 Öffnungszeiten</div>
 				<div class="dinia-acc-tab" data-tab="tables">🪑 Tische</div>
 				<div class="dinia-acc-tab" data-tab="bookings">📋 Buchungen</div>
+				<div class="dinia-acc-tab" data-tab="new-booking">➕ Buchung erstellen</div>
 				<div class="dinia-acc-tab" data-tab="calendar">📅 Kalender</div>
 				<div class="dinia-acc-tab" data-tab="embed">🔗 Einbindung</div>
 				<div class="dinia-acc-tab" data-tab="account">👤 Abo</div>
@@ -639,36 +640,50 @@ class DINA_Account {
 
 			<!-- TAB: Buchungen -->
 			<div class="dinia-acc-card dinia-tab-content" id="tab-bookings" style="display:none;">
-				<h2>📋 Buchungen verwalten</h2>
+				<h2>📋 Buchungen</h2>
 
 				<?php
+				$per_page = 25;
+				$paged    = max( 1, (int) ( $_GET['booking_page'] ?? 1 ) );
+				$offset   = ( $paged - 1 ) * $per_page;
+
+				$total = $this->wpdb->get_var( $this->wpdb->prepare(
+					"SELECT COUNT(*) FROM {$this->prefix}dinia_reservations WHERE customer_id = %d",
+					(int) $customer->id
+				) );
+
 				$bookings = $this->wpdb->get_results( $this->wpdb->prepare(
 					"SELECT r.*, t.name AS table_name
 					 FROM {$this->prefix}dinia_reservations r
 					 LEFT JOIN {$this->prefix}dinia_tables t ON r.table_id = t.id
 					 WHERE r.customer_id = %d
 					 ORDER BY r.date DESC, r.time_start DESC
-					 LIMIT 100",
-					(int) $customer->id
+					 LIMIT %d OFFSET %d",
+					(int) $customer->id,
+					$per_page,
+					$offset
 				) );
 				?>
 
 				<table class="dinia-acc-table">
 					<thead><tr>
-						<th>Datum</th><th>Zeit</th><th>Gast</th><th>Pers.</th><th>Tisch</th><th>Status</th><th>Aktion</th>
+						<th>Datum</th><th>Zeit</th><th>Gast</th><th>E-Mail</th><th>Telefon</th><th>Pers.</th><th>Tisch</th><th>Notiz</th><th>Status</th><th>Aktion</th>
 					</tr></thead>
 					<tbody>
 					<?php if ( empty( $bookings ) ) : ?>
-						<tr><td colspan="7" style="color:#888;">Noch keine Buchungen.</td></tr>
+						<tr><td colspan="10" style="color:#888;">Noch keine Buchungen.</td></tr>
 					<?php else : ?>
 						<?php foreach ( $bookings as $b ) : ?>
 						<tr>
 							<td><?php echo esc_html( date_i18n( 'd.m.Y', strtotime( $b->date ) ) ); ?></td>
-							<td><?php echo esc_html( $b->time_start ); ?> – <?php echo esc_html( $b->time_end ); ?></td>
-							<td><?php echo esc_html( $b->guest_name ); ?><?php echo $b->guest_email ? '<br><small>' . esc_html( $b->guest_email ) . '</small>' : ''; ?></td>
+							<td><?php echo esc_html( $b->time_start ); ?>–<?php echo esc_html( $b->time_end ); ?></td>
+							<td><?php echo esc_html( $b->guest_name ); ?></td>
+							<td><?php echo $b->guest_email ? '<small>' . esc_html( $b->guest_email ) . '</small>' : '<small style="color:#999;">—</small>'; ?></td>
+							<td><?php echo $b->guest_phone ? '<small>' . esc_html( $b->guest_phone ) . '</small>' : '<small style="color:#999;">—</small>'; ?></td>
 							<td><?php echo (int) $b->guest_count; ?></td>
 							<td><?php echo esc_html( $b->table_name ?: '—' ); ?></td>
-							<td><?php echo 'confirmed' === $b->status ? '✅ Bestätigt' : '❌ Storniert'; ?></td>
+							<td><?php echo $b->notes ? '<small>' . esc_html( substr( $b->notes, 0, 40 ) ) . ( strlen( $b->notes ) > 40 ? '…' : '' ) . '</small>' : '<small style="color:#999;">—</small>'; ?></td>
+							<td><?php echo 'confirmed' === $b->status ? '✅' : '❌'; ?></td>
 							<td>
 								<?php if ( 'confirmed' === $b->status ) : ?>
 								<form method="post" style="display:inline;" onsubmit="return confirm('Buchung #<?php echo (int) $b->id; ?> stornieren?');">
@@ -685,7 +700,26 @@ class DINA_Account {
 					</tbody>
 				</table>
 
-				<h3 style="margin:20px 0 8px;">➕ Neue Buchung anlegen</h3>
+				<?php
+				$total_pages = ceil( $total / $per_page );
+				if ( $total_pages > 1 ) :
+				$base = admin_url( 'admin.php?page=dinia-my-account&tab=bookings' );
+				?>
+				<div style="margin-top:12px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+					<?php for ( $i = 1; $i <= $total_pages; $i++ ) : ?>
+						<a href="<?php echo esc_url( add_query_arg( 'booking_page', $i, $base ) ); ?>"
+						   style="display:inline-block;padding:4px 10px;border:1px solid #ddd;border-radius:4px;text-decoration:none;font-size:0.85rem;<?php echo $i === $paged ? 'background:#ff6b00;color:#fff;border-color:#ff6b00;font-weight:600;' : 'background:#fff;color:#333;'; ?>">
+							<?php echo $i; ?>
+						</a>
+					<?php endfor; ?>
+					<span style="font-size:0.82rem;color:#888;margin-left:8px;">(<?php echo (int) $total; ?> gesamt)</span>
+				</div>
+				<?php endif; ?>
+			</div>
+
+			<!-- TAB: Neue Buchung -->
+			<div class="dinia-acc-card dinia-tab-content" id="tab-new-booking" style="display:none;">
+				<h2>➕ Neue Buchung anlegen</h2>
 				<form method="post">
 					<?php wp_nonce_field( 'dinia_account_nonce' ); ?>
 					<input type="hidden" name="dinia_action" value="create_booking">
