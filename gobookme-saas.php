@@ -31,6 +31,7 @@ require_once DINIA_PLUGIN_DIR . 'includes/class-mailer.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-rest-api.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-admin.php';
 require_once DINIA_PLUGIN_DIR . 'includes/class-signup.php';
+require_once DINIA_PLUGIN_DIR . 'includes/class-account.php';
 
 // WP Cron Hook for reminder emails
 add_action( 'dinia_reminder_event', array( 'DINA_Booking', 'send_reminder_email' ) );
@@ -38,6 +39,7 @@ add_action( 'dinia_reminder_event', array( 'DINA_Booking', 'send_reminder_email'
 // Bootstrap
 new DINA_REST_API();
 new DINA_Admin();
+new DINA_Account();
 new DINA_Signup();
 register_activation_hook( __FILE__, 'dinia_activate' );
 
