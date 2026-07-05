@@ -38,13 +38,19 @@ class DINA_Mailer {
             ),
             'to'          => $to,
             'subject'     => $subject,
-            'textContent' => $body,
         );
 
         if ( $html_body !== null ) {
             $payload['htmlContent'] = $html_body;
+            // Erzeuge Plain-Text aus HTML, falls $body leer ist
+            if ( empty( $body ) ) {
+                $payload['textContent'] = wp_strip_all_tags( str_replace( array( '<br>', '<br/>', '<br />', '</p>', '</h1>', '</h2>', '</h3>', '</h4>', '</h5>', '</h6>', '</li>', '</tr>' ), "\n", $html_body ) );
+            } else {
+                $payload['textContent'] = $body;
+            }
         } else {
             $payload['htmlContent'] = self::plain_to_html( $subject, $body );
+            $payload['textContent'] = $body;
         }
 
         $response = wp_remote_post( 'https://api.brevo.com/v3/smtp/email', array(
@@ -59,9 +65,10 @@ class DINA_Mailer {
 
         if ( is_wp_error( $response ) ) {
             // Fallback: wp_mail() versuchen.
-            if ( ! empty( $to ) && ! empty( $subject ) && ! empty( $body ) ) {
+            $fallback_body = ! empty( $body ) ? $body : ( $html_body ?? $subject );
+            if ( ! empty( $to ) && ! empty( $subject ) ) {
                 $wp_to = is_array( $to ) ? $to[0]['email'] : $to;
-                wp_mail( $wp_to, $subject, $body );
+                wp_mail( $wp_to, $subject, $fallback_body );
             }
             return 'Brevo Fehler: ' . $response->get_error_message();
         }
@@ -76,7 +83,8 @@ class DINA_Mailer {
         $msg = isset( $data['message'] ) ? $data['message'] : 'HTTP ' . $code;
 
         // Fallback: wp_mail() bei Brevo-Fehler versuchen.
-        if ( ! empty( $to ) && ! empty( $subject ) && ! empty( $body ) ) {
+        $fallback_body = ! empty( $body ) ? $body : ( $html_body ?? $subject );
+        if ( ! empty( $to ) && ! empty( $subject ) ) {
             $wp_to = is_array( $to ) ? $to[0]['email'] : $to;
             wp_mail( $wp_to, $subject, $body );
         }
