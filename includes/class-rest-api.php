@@ -1249,8 +1249,22 @@ class DINA_REST_API {
 					'guest_phone' => $params['guest_phone'] ?? $params['phone'] ?? '',
 					'guest_email' => $params['guest_email'] ?? $params['email'] ?? '',
 					'notes'       => $params['notes'] ?? $params['note'] ?? '',
+					'table_id'    => (int) ( $params['table_id'] ?? 0 ),
+					'table_ids'   => sanitize_text_field( $params['table_ids'] ?? '' ),
 				];
 				$data['guest_count'] = $data['party_size'];
+
+				// Tisch-Name für CalDAV auflösen
+				$table_name = '';
+				if ( ! empty( $data['table_id'] ) ) {
+					global $wpdb;
+					$table_row = $wpdb->get_row( $wpdb->prepare(
+						"SELECT name FROM {$wpdb->prefix}dinia_tables WHERE id = %d", $data['table_id']
+					) );
+					if ( $table_row ) {
+						$table_name = $table_row->name;
+					}
+				}
 
 				$result = DINA_Booking::create_reservation( $data );
 				if ( $result && ! is_wp_error( $result ) ) {
@@ -1264,7 +1278,7 @@ class DINA_REST_API {
 								$data['time_end'],
 								$data['guest_name'],
 								$data['party_size'],
-								$params['table_name'] ?? '',
+								$table_name,
 								$data['notes'],
 								$data['guest_email'],
 								$data['guest_phone']
