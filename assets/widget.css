@@ -1,0 +1,296 @@
+/* Dinia Booking Widget – 5-Schritt-Wizard */
+.dinia-wrapper {
+  --dinia-primary: #ff6b00;
+  --dinia-primary-dark: #cc5500;
+  --dinia-primary-bg: #fff3e6;
+  --dinia-bg: #fff;
+  --dinia-text: #333;
+  --dinia-border: #ddd;
+  --dinia-muted: #999;
+  max-width: 600px;
+  margin: 30px auto;
+  background: var(--dinia-bg);
+  border-radius: 12px;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--dinia-text);
+}
+
+/* Header */
+.dinia-header {
+  background: var(--dinia-primary);
+  color: #fff;
+  padding: 25px 30px;
+  text-align: center;
+}
+.dinia-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+.dinia-header p {
+  margin: 5px 0 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+/* Steps indicator */
+.dinia-steps {
+  display: flex;
+  background: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+  overflow-x: auto;
+}
+.dinia-step {
+  flex: 1;
+  text-align: center;
+  padding: 12px 8px;
+  font-size: 12px;
+  color: var(--dinia-muted);
+  position: relative;
+  white-space: nowrap;
+}
+.dinia-step span {
+  display: inline-block;
+  width: 22px;
+  height: 22px;
+  line-height: 22px;
+  border-radius: 50%;
+  background: #ddd;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.dinia-step.active { color: var(--dinia-primary); }
+.dinia-step.active span { background: var(--dinia-primary); }
+.dinia-step.done span { background: #4caf50; }
+.dinia-step.done { color: #4caf50; }
+
+/* Body */
+.dinia-body { padding: 30px; }
+
+/* Panels */
+.dinia-panel { display: none; }
+.dinia-panel.active { display: block; }
+.dinia-panel h3 {
+  margin: 0 0 20px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* Date input */
+.dinia-date-input {
+  width: 100%;
+  padding: 14px;
+  font-size: 18px;
+  border: 2px solid #eee;
+  border-radius: 10px;
+  box-sizing: border-box;
+  background: #fff;
+  color: #333;
+}
+
+/* Select */
+.dinia-select {
+  width: 100%;
+  padding: 14px;
+  font-size: 18px;
+  border: 2px solid #eee;
+  border-radius: 10px;
+  box-sizing: border-box;
+  background: #fff;
+  color: #333;
+}
+
+/* Form */
+.dinia-form-group { margin-bottom: 16px; }
+.dinia-form-group label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 5px;
+  font-size: 14px;
+  color: #333;
+}
+.dinia-form-group input,
+.dinia-form-group textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--dinia-border);
+  border-radius: 8px;
+  font-size: 15px;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+  background: #fff;
+  color: #333;
+}
+.dinia-form-group input:focus,
+.dinia-form-group textarea:focus {
+  border-color: var(--dinia-primary);
+  outline: none;
+}
+
+/* Slots grid */
+.dinia-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.dinia-slot-card {
+  background: #f5f5f5;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.dinia-slot-card:hover {
+  border-color: var(--dinia-primary);
+  background: var(--dinia-primary-bg);
+}
+.dinia-slot-card.selected {
+  border-color: var(--dinia-primary);
+  background: var(--dinia-primary);
+  color: #fff;
+}
+.dinia-slot-card .dinia-slot-time {
+  font-size: 16px;
+  font-weight: 700;
+}
+.dinia-slot-card .dinia-slot-table {
+  font-size: 12px;
+  margin-top: 4px;
+  opacity: 0.8;
+}
+.dinia-slot-card.selected .dinia-slot-table { opacity: 0.9; }
+
+/* Summary / Confirm boxes */
+.dinia-summary-box,
+.dinia-confirm-box {
+  background: #f5f5f5;
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #333;
+}
+.dinia-summary-box strong,
+.dinia-confirm-box strong {
+  color: var(--dinia-primary);
+}
+
+/* Navigation buttons */
+.dinia-nav {
+  margin-top: 24px;
+  display: flex;
+  gap: 10px;
+}
+.dinia-nav-right { justify-content: flex-end; }
+.dinia-nav-center { justify-content: center; }
+
+.dinia-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.dinia-btn-next,
+.dinia-btn-confirm {
+  background: var(--dinia-primary);
+  color: #fff;
+}
+.dinia-btn-next:hover,
+.dinia-btn-confirm:hover {
+  background: var(--dinia-primary-dark);
+}
+.dinia-btn-back {
+  background: #eee;
+  color: #666;
+}
+.dinia-btn-back:hover {
+  background: #ddd;
+}
+.dinia-btn-confirm {
+  flex: 1;
+  justify-content: center;
+  font-size: 17px;
+  padding: 14px;
+}
+.dinia-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Messages */
+.dinia-loading {
+  text-align: center;
+  padding: 30px;
+  color: var(--dinia-muted);
+  font-style: italic;
+}
+.dinia-empty-msg {
+  text-align: center;
+  padding: 30px;
+  color: #c00;
+  background: #fff5f5;
+  border-radius: 10px;
+}
+.dinia-error-msg {
+  background: #fff5f5;
+  color: #c00;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+/* Success */
+.dinia-success-icon {
+  width: 70px;
+  height: 70px;
+  background: #4caf50;
+  color: #fff;
+  font-size: 36px;
+  font-weight: 700;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+#dinia-step-success h3 {
+  text-align: center;
+  color: #4caf50;
+}
+
+/* Powered by */
+.dinia-powered {
+  text-align: center;
+  padding: 16px 20px 20px;
+  font-size: 12px;
+  color: var(--dinia-muted);
+  border-top: 1px solid #f0f0f0;
+}
+.dinia-powered a {
+  color: var(--dinia-muted);
+  text-decoration: none;
+}
+.dinia-powered a:hover {
+  color: var(--dinia-primary);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .dinia-body { padding: 20px 16px; }
+  .dinia-steps { font-size: 10px; }
+  .dinia-step { padding: 10px 4px; }
+  .dinia-slots-grid { grid-template-columns: repeat(2, 1fr); }
+  .dinia-header h2 { font-size: 20px; }
+}
