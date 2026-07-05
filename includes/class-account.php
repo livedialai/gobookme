@@ -211,28 +211,26 @@ class DINA_Account {
 				break;
 
 			case 'add_table':
-				$name        = sanitize_text_field( $_POST['table_name'] ?? '' );
-				$capacity    = max( 1, (int) ( $_POST['table_capacity'] ?? 2 ) );
-				$area        = sanitize_text_field( $_POST['table_area'] ?? 'innen' );
-				$description = sanitize_text_field( $_POST['table_description'] ?? '' );
-				$combinable  = ! empty( $_POST['table_combinable'] ) ? 1 : 0;
-				if ( ! empty( $name ) ) {
-					$this->wpdb->insert(
-						$this->prefix . 'dinia_tables',
-						array(
-							'customer_id'  => (int) $customer->id,
-							'name'         => $name,
-							'capacity'     => $capacity,
-							'area'         => $area,
-							'description'  => $description,
-							'combinable'   => $combinable,
-							'is_active'    => 1,
-							'sort_order'   => 0,
-						)
-					);
-				}
-				$redirect = add_query_arg( 'saved', 'table', $redirect );
-				break;
+			$name        = sanitize_text_field( $_POST['table_name'] ?? '' );
+			$capacity    = max( 1, (int) ( $_POST['table_capacity'] ?? 2 ) );
+			$area        = sanitize_text_field( $_POST['table_area'] ?? 'innen' );
+			$description = sanitize_text_field( $_POST['table_description'] ?? '' );
+			$combinable  = ! empty( $_POST['table_combinable'] ) ? 1 : 0;
+			if ( ! empty( $name ) ) {
+				$this->wpdb->insert(
+					$this->prefix . 'dinia_tables',
+					array(
+						'customer_id'  => (int) $customer->id,
+						'name'         => $name,
+						'seats'        => $capacity,
+						'position'     => $area,
+						'combinable'   => $combinable,
+						'active'       => 1,
+					)
+				);
+			}
+			$redirect = add_query_arg( 'saved', 'table', $redirect );
+			break;
 
 			case 'delete_table':
 				$table_id = (int) ( $_POST['table_id'] ?? 0 );
@@ -587,15 +585,15 @@ class DINA_Account {
 					<tbody>
 					<?php
 					$tables = $this->wpdb->get_results( $this->wpdb->prepare(
-						"SELECT * FROM {$this->prefix}dinia_tables WHERE customer_id = %d ORDER BY sort_order, name",
+						"SELECT * FROM {$this->prefix}dinia_tables WHERE customer_id = %d ORDER BY position, name",
 						(int) $customer->id
 					) );
 					foreach ( $tables as $t ) :
 					?>
 						<tr>
 							<td><?php echo esc_html( $t->name ); ?></td>
-							<td><?php echo (int) $t->capacity; ?> Pers.</td>
-							<td><?php echo esc_html( $t->area ); ?></td>
+							<td><?php echo (int) $t->seats; ?> Pers.</td>
+							<td><?php echo esc_html( $t->position ); ?></td>
 							<td><?php echo ! empty( $t->combinable ) ? '✅' : '—'; ?></td>
 							<td>
 								<form method="post" style="display:inline;" onsubmit="return confirm('Tisch löschen?');">
