@@ -514,6 +514,9 @@ class DINA_Signup {
 
 		$customer_id = $this->wpdb->insert_id;
 
+		// Default-Öffnungszeiten anlegen
+		$this->insert_default_hours( $customer_id );
+
 		// WordPress-Benutzer anlegen
 		$username = sanitize_user( str_replace( ' ', '', $company ), true );
 		if ( empty( $username ) ) {
@@ -831,6 +834,9 @@ class DINA_Signup {
 
 		$customer_id = $this->wpdb->insert_id;
 
+		// Default-Öffnungszeiten anlegen
+		$this->insert_default_hours( $customer_id );
+
 		// WP-User anlegen
 		$username = sanitize_user( str_replace( ' ', '', $company ), true );
 		if ( empty( $username ) ) {
@@ -1037,5 +1043,26 @@ class DINA_Signup {
 			'Willkommen bei Dinia – Ihr Account ist aktiv',
 			$html_body
 		);
+	}
+
+	/**
+	 * Legt Default-Öffnungszeiten (Mo–So 11:00–22:00) für einen neuen Kunden an.
+	 *
+	 * @since 1.3.3
+	 *
+	 * @param int $customer_id Die Customer-ID.
+	 * @return void
+	 */
+	private function insert_default_hours( $customer_id ) {
+		$days = array( 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' );
+		foreach ( $days as $day ) {
+			$this->wpdb->query(
+				$this->wpdb->prepare(
+					"INSERT IGNORE INTO {$this->wpdb->prefix}dinia_hours (customer_id, day_key, open, close, closed) VALUES (%d, %s, '11:00', '22:00', 0)",
+					$customer_id,
+					$day
+				)
+			);
+		}
 	}
 }
