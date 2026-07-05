@@ -49,7 +49,7 @@
       return;
     }
 
-    apiBase = '/wp-json/dinia/v1/widget/' + encodeURIComponent(tenant);
+    apiBase = (typeof DINIA_API_BASE !== 'undefined') ? DINIA_API_BASE : '/wp-json/dinia/v1/widget/' + encodeURIComponent(tenant);
 
     var container = document.getElementById('dinia-widget');
     if (!container) {
